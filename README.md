@@ -14,6 +14,12 @@ It uses only Apple frameworks (`SwiftUI`, `AVFoundation`, `Vision`, `CoreGraphic
 
 ShotTessera is an independent project. Its name, three-bar mark, and interface are original; it is not affiliated with Apple, MoviePrint, or any video service.
 
+## App icon
+
+The original **Tessera Iris** icon is an abstract viewfinder: nine rounded storyboard tiles form an eye, with the central pupil and gold highlight representing the selected representative frame. The app loads the 1024 px PNG at launch; a standard macOS [`.icns` package](Assets/ShotTessera.icns) and its [iconset](Assets/AppIcon.iconset) are included for future app-bundle packaging.
+
+![ShotTessera app icon](Assets/AppIcon-1024-source.png)
+
 ## Requirements
 
 - macOS 13 or later

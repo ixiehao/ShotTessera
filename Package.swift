@@ -10,7 +10,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ShotTesseraApp",
-            path: "Sources/ShotTesseraApp"
+            path: "Sources/ShotTesseraApp",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "ShotTesseraCoreTests",

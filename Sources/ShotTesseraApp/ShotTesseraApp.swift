@@ -1,7 +1,15 @@
+import AppKit
 import SwiftUI
 
 @main
 struct ShotTesseraApp: App {
+    init() {
+        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApplication.shared.applicationIconImage = icon
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
