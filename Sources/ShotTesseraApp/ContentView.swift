@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @StateObject private var model = StoryboardViewModel()
     @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
+    @State private var isLanguagePickerPresented = false
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .chinese
@@ -49,28 +50,62 @@ struct ContentView: View {
     }
 
     private var languageMenu: some View {
-        Menu {
-            ForEach(AppLanguage.allCases) { choice in
-                Button {
-                    languageCode = choice.rawValue
-                } label: {
-                    HStack {
-                        Text(choice.displayName)
-                        if choice == language { Image(systemName: "checkmark") }
+        Button {
+            isLanguagePickerPresented.toggle()
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "globe")
+                    .foregroundStyle(Color(red: 0.48, green: 0.88, blue: 0.93))
+                Text(language.displayName)
+                    .foregroundStyle(PreviewText.primary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(PreviewText.secondary)
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .frame(width: 118, height: 34)
+            .contentShape(Capsule())
+            .background(Color(red: 0.12, green: 0.17, blue: 0.28).opacity(0.96), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(Color(red: 0.43, green: 0.80, blue: 0.90).opacity(0.62))
+            }
+            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 118, height: 34)
+        .accessibilityLabel(t("app.language"))
+        .popover(isPresented: $isLanguagePickerPresented, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(t("app.language"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 2)
+
+                ForEach(AppLanguage.allCases) { choice in
+                    Button {
+                        languageCode = choice.rawValue
+                        isLanguagePickerPresented = false
+                    } label: {
+                        HStack {
+                            Text(choice.displayName)
+                            Spacer()
+                            if choice == language {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .background(choice == language ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                     }
+                    .buttonStyle(.plain)
                 }
             }
-        } label: {
-            Label(language.displayName, systemImage: "globe")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(PreviewText.primary)
-                .padding(.horizontal, 11)
-                .padding(.vertical, 7)
-                .background(Color.white.opacity(0.09), in: Capsule())
-                .overlay { Capsule().strokeBorder(.white.opacity(0.12)) }
+            .padding(8)
+            .frame(width: 156)
         }
-        .menuStyle(.borderlessButton)
-        .accessibilityLabel(t("app.language"))
     }
 
     private var controlPanel: some View {

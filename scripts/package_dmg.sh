@@ -7,7 +7,7 @@ readonly executable_name="ShotTessera"
 readonly bundle_name="ShotTessera_ShotTesseraApp.bundle"
 readonly output_dir="$project_dir/dist"
 readonly app_path="$output_dir/$product_name.app"
-readonly dmg_path="$output_dir/$product_name-0.2.0.dmg"
+readonly dmg_path="$output_dir/$product_name-0.2.1.dmg"
 
 cd "$project_dir"
 swift build -c release --arch arm64 --arch x86_64
