@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = StoryboardViewModel()
-    @FocusState private var watermarkTitleIsFocused: Bool
+    @State private var watermarkTitleNeedsFocus = false
 
     var body: some View {
         ZStack {
@@ -112,27 +112,26 @@ struct ContentView: View {
                         .disabled(model.isProcessing)
                         .onChange(of: model.showTitleWatermark) { isEnabled in
                             guard isEnabled else {
-                                watermarkTitleIsFocused = false
+                                watermarkTitleNeedsFocus = false
                                 return
                             }
-                            DispatchQueue.main.async { watermarkTitleIsFocused = true }
+                            watermarkTitleNeedsFocus = true
                         }
 
                     if model.showTitleWatermark {
-                        TextField("输入标题", text: $model.watermarkTitle)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white)
-                            .tint(Color(red: 0.42, green: 0.85, blue: 0.91))
-                            .focused($watermarkTitleIsFocused)
+                        NativeTitleField(
+                            text: $model.watermarkTitle,
+                            needsFocus: $watermarkTitleNeedsFocus,
+                            isEnabled: !model.isProcessing
+                        )
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 31)
                             .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
                             .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .strokeBorder(Color.white.opacity(0.24))
                             }
-                            .disabled(model.isProcessing)
                             .accessibilityLabel("水印标题")
                             .accessibilityHint("输入后会以居中半透明大字写入图片")
                             .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -679,6 +678,76 @@ private enum PreviewText {
     /// Explicit colors keep the copy readable even when macOS resolves the window as light appearance.
     static let primary = Color(red: 0.84, green: 0.94, blue: 1.00)
     static let secondary = Color(red: 0.62, green: 0.76, blue: 0.91)
+}
+
+/// Uses AppKit's field directly so CJK composition and paste always use the
+/// window's native field editor instead of a misplaced SwiftUI overlay.
+private struct NativeTitleField: NSViewRepresentable {
+    @Binding var text: String
+    @Binding var needsFocus: Bool
+    let isEnabled: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, needsFocus: $needsFocus)
+    }
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.delegate = context.coordinator
+        field.isBordered = false
+        field.drawsBackground = false
+        field.isBezeled = false
+        field.focusRingType = .none
+        field.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        field.textColor = NSColor.white
+        field.alignment = .left
+        field.lineBreakMode = .byTruncatingTail
+        field.maximumNumberOfLines = 1
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        field.placeholderAttributedString = NSAttributedString(
+            string: "输入标题",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.34)
+            ]
+        )
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        field.isEnabled = isEnabled
+        if field.stringValue != text { field.stringValue = text }
+        guard isEnabled, needsFocus, field.currentEditor() == nil else { return }
+        DispatchQueue.main.async {
+            guard field.isEnabled, field.currentEditor() == nil else { return }
+            field.window?.makeFirstResponder(field)
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        private var text: Binding<String>
+        private var needsFocus: Binding<Bool>
+
+        init(text: Binding<String>, needsFocus: Binding<Bool>) {
+            self.text = text
+            self.needsFocus = needsFocus
+        }
+
+        func controlTextDidBeginEditing(_ notification: Notification) {
+            needsFocus.wrappedValue = true
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            text.wrappedValue = field.stringValue
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            needsFocus.wrappedValue = false
+        }
+    }
 }
 
 private struct GridChoiceStyle: ButtonStyle {
