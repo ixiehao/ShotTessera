@@ -34,6 +34,10 @@ video URL
 `ExportSettings` constrains the grid to the UI's 3 x 3 through 8 x 8 choices
 and clamps exported width to at least 1920 px. Rendering uses CoreGraphics, so
 the final image is composed in memory without an intermediate image editor.
+All text rendered into exported images uses the bundled, unmodified Noto Sans
+CJK SC Bold 2.004 font. The font is registered only for the app process; its
+SIL Open Font License 1.1, source release, and checksum are retained in
+[NOTICE.md](../NOTICE.md).
 
 ## Selection behavior
 

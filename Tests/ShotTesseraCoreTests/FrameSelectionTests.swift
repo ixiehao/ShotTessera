@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import XCTest
 @testable import ShotTesseraApp
 
@@ -36,6 +37,12 @@ final class FrameSelectionTests: XCTestCase {
 
         settings.showTitleWatermark = true
         XCTAssertEqual(settings.titleWatermark(for: sourceURL), "夏日片段")
+    }
+
+    func testWatermarkTitleUsesBundledOFLBoldFont() {
+        let font = WatermarkTypography.titleFont(size: 42)
+        XCTAssertTrue(WatermarkTypography.isBundledFontAvailable)
+        XCTAssertEqual(CTFontCopyPostScriptName(font) as String, WatermarkTypography.postScriptName)
     }
 
     func testComposerRendersAVisibleTitleWatermark() throws {

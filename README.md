@@ -1,5 +1,7 @@
 # ShotTessera
 
+[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
+
 ShotTessera is a small, native macOS app that turns a video into one clean storyboard image. Its name joins **shot** with **tessera**, a small tile in a mosaic: selected video shots arranged into one visual whole.
 
 It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `CoreGraphics`, and `ImageIO`): no Electron, FFmpeg, Python runtime, analytics, network requests, or cloud upload.
@@ -14,9 +16,18 @@ It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `C
 - Lets you choose MP4, MOV, M4V, AVI, MKV, WebM, 3GP/3G2, MPEG, TS/M2TS, WMV, FLV, and related common containers.
 - Creates a PNG or JPEG at 1920 px wide or larger, then automatically saves it beside the source video as `video-name-shot-001.ext` (the number increments safely).
 - Can overlay each selected frame's source timecode (`HH:MM:SS`) when **显示时间** is enabled.
-- Keeps titles off by default; when **标题水印** is enabled, the source video's filename is placed as a large, translucent, centered overlay in the exported image.
+- Keeps titles off by default; when **标题水印** is enabled, the source video's filename is placed as a large, translucent, centered overlay in the exported image using bundled **Noto Sans CJK SC Bold**.
 
 ShotTessera is an independent project. Its name, Tessera Iris icon, and interface are original; it is not affiliated with Apple, MoviePrint, or any video service.
+
+## Rights and attribution
+
+- The Swift source, documentation, and Tessera Iris artwork in this repository are original project material and are released under the repository's [MIT License](LICENSE).
+- The app uses only Apple SDK frameworks at runtime; it does not include third-party application code, packages, analytics SDKs, network clients, or copied MoviePrint assets.
+- The only bundled third-party asset is `NotoSansCJKsc-Bold.otf` (Noto Sans CJK SC Bold 2.004). It is kept unmodified and distributed under the **SIL Open Font License 1.1**, which permits embedding and commercial redistribution with its notice and license. See [NOTICE.md](NOTICE.md) and [the included OFL text](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt).
+- Source videos and any pre-existing logos, subtitles, or watermarks within them remain the user's responsibility. Generating a storyboard does not grant publication or redistribution rights.
+
+This is a source-and-asset audit for this repository, not legal advice for a particular video or distribution scenario.
 
 ## App icon
 
@@ -57,4 +68,4 @@ ShotTessera is intentionally lightweight. It rapidly samples adaptive, export-ap
 
 ## License
 
-[MIT](LICENSE)
+The project code and original assets are [MIT](LICENSE). The bundled Noto font remains under its separate [SIL Open Font License 1.1](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt).

@@ -93,7 +93,7 @@ enum StoryboardComposer {
 
     private static func drawTimestamp(_ timestamp: Double, in rect: CGRect, context: CGContext) {
         let fontSize = max(10, rect.width * 0.043)
-        let font = CTFontCreateWithName("SF Pro Rounded" as CFString, fontSize, nil)
+        let font = WatermarkTypography.titleFont(size: fontSize)
         let text = TimestampFormatter.string(for: timestamp) as CFString
         let attributes: [CFString: Any] = [
             kCTFontAttributeName: font,
@@ -123,7 +123,7 @@ enum StoryboardComposer {
 
     private static func drawTitleWatermark(_ title: String, canvasSize: CGSize, context: CGContext) {
         let fontSize = max(42, min(canvasSize.width * 0.065, canvasSize.height * 0.19))
-        let font = CTFontCreateWithName("SF Pro Rounded" as CFString, fontSize, nil)
+        let font = WatermarkTypography.titleFont(size: fontSize)
         var alignment = CTTextAlignment.center
         var lineBreakMode = CTLineBreakMode.byCharWrapping
         let paragraph = withUnsafePointer(to: &alignment) { alignmentPointer in
