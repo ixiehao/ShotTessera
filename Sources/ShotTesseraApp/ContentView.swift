@@ -142,9 +142,10 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("分镜预览")
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .foregroundStyle(PreviewText.primary)
                     Text(model.previewStatus)
                         .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PreviewText.secondary)
                 }
                 Spacer()
             }
@@ -618,15 +619,22 @@ private struct EmptyPreview: View {
             ShotTesseraMark().scaleEffect(1.7)
             Text("让影片变成一张图")
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(PreviewText.primary)
             Text("自动避开黑屏、模糊与重复画面，优先选择有人物的镜头。")
                 .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(PreviewText.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 310)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
+}
+
+private enum PreviewText {
+    /// Explicit colors keep the copy readable even when macOS resolves the window as light appearance.
+    static let primary = Color(red: 0.84, green: 0.94, blue: 1.00)
+    static let secondary = Color(red: 0.62, green: 0.76, blue: 0.91)
 }
 
 private struct GridChoiceStyle: ButtonStyle {
