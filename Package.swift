@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "ShotTessera",
+    defaultLocalization: "zh-Hans",
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "ShotTessera", targets: ["ShotTesseraApp"])

@@ -17,16 +17,32 @@ enum StoryboardGrid {
 /// every supported storyboard grid has the same number of rows and columns.
 /// `source` is deliberately the default: it preserves a vertical, square, or
 /// horizontal video's composition instead of forcing every frame into 16:9.
-enum StoryboardAspect: String, CaseIterable, Identifiable, Sendable {
-    case source = "随视频（自动）"
-    case landscape = "横屏 16:9"
-    case standard = "经典 4:3"
-    case square = "方形 1:1"
-    case vertical = "竖屏 3:4"
-    case portrait = "竖屏 9:16"
-    case ultraWide = "超宽 21:9"
+enum StoryboardAspect: CaseIterable, Identifiable, Sendable {
+    case source
+    case landscape
+    case standard
+    case square
+    case vertical
+    case portrait
+    case ultraWide
 
     var id: Self { self }
+
+    func label(in language: AppLanguage) -> String {
+        language.text(localizationKey)
+    }
+
+    private var localizationKey: String {
+        switch self {
+        case .source: "aspect.source"
+        case .landscape: "aspect.landscape"
+        case .standard: "aspect.standard"
+        case .square: "aspect.square"
+        case .vertical: "aspect.vertical"
+        case .portrait: "aspect.portrait"
+        case .ultraWide: "aspect.ultraWide"
+        }
+    }
 
     private var fixedCardAspectRatio: Double? {
         switch self {
@@ -52,6 +68,7 @@ enum StoryboardAspect: String, CaseIterable, Identifiable, Sendable {
 struct ExportSettings: Sendable {
     var gridSide: Int = 4
     var layoutAspect: StoryboardAspect = .source
+    var language: AppLanguage = .chinese
     var format: ExportFormat = .png
     var width: Int = 2560
     var showTimestamps = false
@@ -112,12 +129,12 @@ enum VideoJobState: Equatable {
     case completed(String)
     case failed(String)
 
-    var label: String {
+    func label(in language: AppLanguage) -> String {
         switch self {
-        case .queued: "等待处理"
-        case .processing: "处理中"
-        case .completed: "已保存"
-        case .failed: "失败"
+        case .queued: language.text("job.queued")
+        case .processing: language.text("job.processing")
+        case .completed: language.text("job.completed")
+        case .failed: language.text("job.failed")
         }
     }
 }
@@ -190,12 +207,14 @@ enum StoryboardError: LocalizedError {
     case noUsableFrames
     case noExportData
 
-    var errorDescription: String? {
+    func message(in language: AppLanguage) -> String {
         switch self {
-        case .unreadableVideo: "无法读取此视频。请确认文件没有损坏，并尝试系统播放器能够打开的视频。"
-        case .unsupportedCodec: "已识别此视频格式，但当前 macOS 无法解码其中的编码。请在系统播放器中确认能播放，或转换为 H.264/H.265 的 MP4、MOV。"
-        case .noUsableFrames: "没有找到足够清晰、明亮的画面。"
-        case .noExportData: "无法生成导出图片。"
+        case .unreadableVideo: language.text("error.unreadableVideo")
+        case .unsupportedCodec: language.text("error.unsupportedCodec")
+        case .noUsableFrames: language.text("error.noUsableFrames")
+        case .noExportData: language.text("error.noExportData")
         }
     }
+
+    var errorDescription: String? { message(in: .chinese) }
 }

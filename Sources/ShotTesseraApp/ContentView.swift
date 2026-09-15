@@ -4,9 +4,18 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = StoryboardViewModel()
+    @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageCode) ?? .chinese
+    }
+
+    private func t(_ key: String, _ arguments: CVarArg...) -> String {
+        language.text(key, arguments: arguments)
+    }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topTrailing) {
             LinearGradient(
                 colors: [Color(red: 0.05, green: 0.06, blue: 0.10), Color(red: 0.10, green: 0.075, blue: 0.16)],
                 startPoint: .topLeading,
@@ -21,36 +30,70 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .padding(30)
+
+            languageMenu
+                .padding(.top, 18)
+                .padding(.trailing, 22)
+        }
+        .environment(\.locale, language.locale)
+        .onAppear { model.language = language }
+        .onChange(of: languageCode) { newValue in
+            model.language = AppLanguage(rawValue: newValue) ?? .chinese
         }
         .onDrop(of: [.fileURL], isTargeted: $model.isDropTargeted, perform: model.acceptDrop)
-        .alert("无法生成分镜图", isPresented: $model.showError) {
-            Button("好", role: .cancel) { }
+        .alert(t("alert.generation.title"), isPresented: $model.showError) {
+            Button(t("button.ok"), role: .cancel) { }
         } message: {
             Text(model.errorMessage)
         }
     }
 
+    private var languageMenu: some View {
+        Menu {
+            ForEach(AppLanguage.allCases) { choice in
+                Button {
+                    languageCode = choice.rawValue
+                } label: {
+                    HStack {
+                        Text(choice.displayName)
+                        if choice == language { Image(systemName: "checkmark") }
+                    }
+                }
+            }
+        } label: {
+            Label(language.displayName, systemImage: "globe")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(PreviewText.primary)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .background(Color.white.opacity(0.09), in: Capsule())
+                .overlay { Capsule().strokeBorder(.white.opacity(0.12)) }
+        }
+        .menuStyle(.borderlessButton)
+        .accessibilityLabel(t("app.language"))
+    }
+
     private var controlPanel: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
-                ShotTesseraMark()
+                ShotTesseraMark(language: language)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ShotTessera")
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    Text("把影片织成一张分镜图")
+                    Text(t("app.tagline"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
             }
 
-            VideoBatchCard(jobs: model.videoJobs, isTargeted: model.isDropTargeted, isProcessing: model.isProcessing) {
+            VideoBatchCard(jobs: model.videoJobs, language: language, isTargeted: model.isDropTargeted, isProcessing: model.isProcessing) {
                 model.chooseVideo()
             } clear: {
                 model.clearVideos()
             }
 
             VStack(alignment: .leading, spacing: 11) {
-                Label("分镜网格", systemImage: "square.grid.3x3.fill")
+                Label(t("section.grid"), systemImage: "square.grid.3x3.fill")
                     .font(.system(size: 13, weight: .semibold))
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
                     ForEach(StoryboardGrid.availableSides, id: \.self) { side in
@@ -70,12 +113,12 @@ struct ContentView: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 HStack {
-                    Label("画面比例", systemImage: "aspectratio")
+                    Label(t("section.aspect"), systemImage: "aspectratio")
                         .font(.system(size: 13, weight: .semibold))
                     Spacer()
-                    Picker("画面比例", selection: $model.layoutAspect) {
+                    Picker(t("section.aspect"), selection: $model.layoutAspect) {
                         ForEach(StoryboardAspect.allCases) { aspect in
-                            Text(aspect.rawValue).tag(aspect)
+                            Text(aspect.label(in: language)).tag(aspect)
                         }
                     }
                     .pickerStyle(.menu)
@@ -83,18 +126,18 @@ struct ContentView: View {
                     .fixedSize()
                     .disabled(model.isProcessing)
                 }
-                Text("默认随视频比例完整保留竖屏、方屏和横屏构图。")
+                Text(t("aspect.help"))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Label("导出", systemImage: "arrow.down.to.line.compact")
+                Label(t("section.export"), systemImage: "arrow.down.to.line.compact")
                     .font(.system(size: 13, weight: .semibold))
-                Text("自动保存到视频同目录：视频名-shot-001；数字自动递增。")
+                Text(t("export.autosave"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                Picker("格式", selection: $model.format) {
+                Picker(t("export.format"), selection: $model.format) {
                     ForEach(ExportFormat.allCases) { format in
                         Text(format.rawValue).tag(format)
                     }
@@ -103,16 +146,16 @@ struct ContentView: View {
                 .disabled(model.isProcessing)
                 HStack(spacing: 6) {
                     Stepper(value: $model.width, in: 1920...12_000, step: 160) {
-                        Text("宽度 \(model.width) px")
+                        Text(t("export.width", model.width))
                             .monospacedDigit()
                     }
                     .font(.system(size: 11, weight: .medium))
-                    .accessibilityHint("输出图片宽度最低为 1920 像素")
+                    .accessibilityHint(t("export.width.hint"))
                     .disabled(model.isProcessing)
 
                     Divider().frame(height: 24)
 
-                    Toggle("时间", isOn: $model.showTimestamps)
+                    Toggle(t("export.time"), isOn: $model.showTimestamps)
                         .font(.system(size: 11, weight: .medium))
                         .toggleStyle(.switch)
                         .fixedSize()
@@ -120,17 +163,17 @@ struct ContentView: View {
 
                     Divider().frame(height: 24)
 
-                    Toggle("标题", isOn: $model.showTitleWatermark)
+                    Toggle(t("export.title"), isOn: $model.showTitleWatermark)
                         .font(.system(size: 11, weight: .medium))
                         .toggleStyle(.switch)
                         .fixedSize()
                         .disabled(model.isProcessing)
                 }
-                Text("最低 1920 px；所有画面只在本机处理。")
+                Text(t("export.local.note"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 if model.showTitleWatermark {
-                    Text("标题水印将自动使用视频文件名。")
+                    Text(t("export.title.note"))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
@@ -149,16 +192,16 @@ struct ContentView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!model.hasVideos || model.isProcessing)
-            .accessibilityLabel(model.isProcessing ? "正在生成分镜图" : "一键生成分镜图")
+            .accessibilityLabel(model.isProcessing ? t("accessibility.generating") : t("accessibility.generate"))
 
             if model.isProcessing {
-                Button("取消生成", role: .cancel, action: model.cancelGeneration)
+                Button(t("button.cancel"), role: .cancel, action: model.cancelGeneration)
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                 ProgressView(value: model.progress)
                     .tint(Color(red: 0.38, green: 0.82, blue: 0.92))
-                    .accessibilityLabel("正在分析影片")
+                    .accessibilityLabel(t("accessibility.analyzing"))
                     .accessibilityValue("\(Int(model.progress * 100))%")
             }
         }
@@ -174,7 +217,7 @@ struct ContentView: View {
         VStack(spacing: 18) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("分镜预览")
+                    Text(t("preview.title"))
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
                         .foregroundStyle(PreviewText.primary)
                     Text(model.previewStatus)
@@ -189,6 +232,7 @@ struct ContentView: View {
                     ProgressiveStoryboardPreview(
                         gridSide: model.activeGridSide,
                         cardAspectRatio: model.activeCardAspectRatio,
+                        language: language,
                         frames: model.livePreviewFrames
                     )
                 } else if let image = model.previewImage {
@@ -199,7 +243,7 @@ struct ContentView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .shadow(color: .black.opacity(0.28), radius: 24, y: 12)
                         Button(action: model.exportCurrentResult) {
-                            Label("另存为 \((model.renderedFormat ?? model.format).rawValue)", systemImage: "square.and.arrow.down")
+                            Label(t("button.saveas", (model.renderedFormat ?? model.format).rawValue), systemImage: "square.and.arrow.down")
                                 .font(.system(size: 14, weight: .bold))
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 10)
@@ -207,7 +251,7 @@ struct ContentView: View {
                         .buttonStyle(ExportButtonStyle())
                     }
                 } else {
-                    EmptyPreview()
+                    EmptyPreview(language: language)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -224,6 +268,7 @@ struct ContentView: View {
 @MainActor
 final class StoryboardViewModel: ObservableObject {
     @Published private(set) var videoJobs: [VideoJob] = []
+    @Published var language: AppLanguage = .chinese
     @Published var gridSide = 4
     @Published var layoutAspect: StoryboardAspect = .source
     @Published var format: ExportFormat = .png
@@ -248,27 +293,31 @@ final class StoryboardViewModel: ObservableObject {
     private var pendingSource: URL?
     private var pendingFormat: ExportFormat?
 
+    private func t(_ key: String, _ arguments: CVarArg...) -> String {
+        language.text(key, arguments: arguments)
+    }
+
     var hasVideos: Bool { !videoJobs.isEmpty }
 
     var primaryButtonTitle: String {
-        videoJobs.count > 1 ? "批量生成 \(videoJobs.count) 部分镜图" : "一键生成分镜图"
+        videoJobs.count > 1 ? t("button.generate.batch", videoJobs.count) : t("button.generate.single")
     }
 
     var previewStatus: String {
         if isProcessing {
             let totalFrames = activeGridSide * activeGridSide
-            let name = videoJobs.indices.contains(activeJobIndex) ? videoJobs[activeJobIndex].url.lastPathComponent : "视频"
-            return "第 \(activeJobIndex + 1)/\(max(1, activeJobCount)) 部 · \(name) · 已截取 \(livePreviewFrames.count)/\(totalFrames) 张"
+            let name = videoJobs.indices.contains(activeJobIndex) ? videoJobs[activeJobIndex].url.lastPathComponent : t("default.video")
+            return t("status.processing", activeJobIndex + 1, max(1, activeJobCount), name, livePreviewFrames.count, totalFrames)
         }
-        return previewImage == nil ? "可选择或拖入多个视频，随后按队列自动处理。" : outputDescription
+        return previewImage == nil ? t("status.empty") : outputDescription
     }
 
     var processingLabel: String {
-        let batchPrefix = activeJobCount > 1 ? "第 \(activeJobIndex + 1)/\(activeJobCount) 部 · " : ""
+        let batchPrefix = activeJobCount > 1 ? "\(activeJobIndex + 1)/\(activeJobCount) · " : ""
         return switch progress {
-        case ..<0.58: "\(batchPrefix)正在快速浏览画面…"
-        case ..<0.72: "\(batchPrefix)正在优选人物镜头…"
-        default: "\(batchPrefix)正在实时拼接分镜图…"
+        case ..<0.58: t("processing.fast", batchPrefix)
+        case ..<0.72: t("processing.people", batchPrefix)
+        default: t("processing.assembling", batchPrefix)
         }
     }
 
@@ -291,7 +340,7 @@ final class StoryboardViewModel: ObservableObject {
             .map { VideoJob(url: $0) }
         videoJobs.append(contentsOf: additions)
         if additions.count < candidates.count {
-            errorMessage = "已忽略不是常见视频格式的文件。支持 MP4、MOV、MKV、WebM、AVI、3GP、MPEG、TS 等。"
+            errorMessage = t("error.unsupportedInput")
             showError = true
         }
     }
@@ -325,6 +374,7 @@ final class StoryboardViewModel: ObservableObject {
         let settings = ExportSettings(
             gridSide: gridSide,
             layoutAspect: layoutAspect,
+            language: language,
             format: format,
             width: width,
             showTimestamps: showTimestamps,
@@ -363,7 +413,8 @@ final class StoryboardViewModel: ObservableObject {
                     await bridge.cancelled()
                     return
                 } catch {
-                    await bridge.failJob(source: videoURL, index: index, message: error.localizedDescription)
+                    let message = (error as? StoryboardError)?.message(in: settings.language) ?? error.localizedDescription
+                    await bridge.failJob(source: videoURL, index: index, message: message)
                 }
             }
             await bridge.finishBatch()
@@ -376,7 +427,7 @@ final class StoryboardViewModel: ObservableObject {
         generationTask = nil
         isProcessing = false
         livePreviewFrames = []
-        outputDescription = "已取消生成。"
+        outputDescription = t("status.cancelled")
     }
 
     private var activeUsesSourceAspect = true
@@ -390,7 +441,7 @@ final class StoryboardViewModel: ObservableObject {
         livePreviewFrames = []
         progress = 0
         if videoJobs.indices.contains(index) { videoJobs[index].state = .processing }
-        outputDescription = "正在处理 \(source.lastPathComponent)"
+        outputDescription = t("status.nowProcessing", source.lastPathComponent)
     }
 
     func appendPreview(_ frame: CapturedFrame, index: Int, total: Int) {
@@ -412,16 +463,16 @@ final class StoryboardViewModel: ObservableObject {
             let destination = ExportDestination.nextURL(for: source, format: settings.format)
             try data.write(to: destination, options: .atomic)
             if videoJobs.indices.contains(index) { videoJobs[index].state = .completed(destination.lastPathComponent) }
-            outputDescription = "第 \(index + 1)/\(total) 部已保存为 \(destination.lastPathComponent)。"
+            outputDescription = t("status.saved", index + 1, total, destination.lastPathComponent)
         } catch {
             if videoJobs.indices.contains(index) { videoJobs[index].state = .failed(error.localizedDescription) }
-            outputDescription = "第 \(index + 1)/\(total) 部已生成，但未能自动保存。"
+            outputDescription = t("status.generatedNotSaved", index + 1, total)
         }
     }
 
     func markJobFailed(index: Int, message: String) {
         if videoJobs.indices.contains(index) { videoJobs[index].state = .failed(message) }
-        outputDescription = "第 \(index + 1) 部无法处理，继续下一部。"
+        outputDescription = t("status.failedContinue", index + 1)
     }
 
     func finishBatch() {
@@ -436,14 +487,16 @@ final class StoryboardViewModel: ObservableObject {
             if case .failed = $0.state { return true }
             return false
         }.count
-        outputDescription = "批量处理完成：已保存 \(completed) 部\(failed > 0 ? "，失败 \(failed) 部" : "")。"
+        outputDescription = failed > 0
+            ? t("status.batchCompletedWithFailures", completed, failed)
+            : t("status.batchCompleted", completed)
     }
 
     func markCancelled() {
         isProcessing = false
         generationTask = nil
         livePreviewFrames = []
-        outputDescription = "已取消生成。"
+        outputDescription = t("status.cancelled")
     }
 
     func exportCurrentResult() {
@@ -524,6 +577,8 @@ private final class UIStateBridge: @unchecked Sendable {
 }
 
 private struct ShotTesseraMark: View {
+    let language: AppLanguage
+
     var body: some View {
         Group {
             if let image = ShotTesseraIconAsset.image {
@@ -531,7 +586,7 @@ private struct ShotTesseraMark: View {
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
-                    .accessibilityLabel("ShotTessera 拼片之眼图标")
+                    .accessibilityLabel(language.text("app.icon.accessibility"))
             } else {
                 Image(systemName: "eye")
                     .font(.system(size: 22, weight: .semibold))
@@ -553,6 +608,7 @@ private enum ShotTesseraIconAsset {
 
 private struct VideoBatchCard: View {
     let jobs: [VideoJob]
+    let language: AppLanguage
     let isTargeted: Bool
     let isProcessing: Bool
     let choose: () -> Void
@@ -598,13 +654,13 @@ private struct VideoBatchCard: View {
                             Text(job.url.lastPathComponent)
                                 .lineLimit(1)
                             Spacer()
-                            Text(job.state.label)
+                            Text(job.state.label(in: language))
                                 .foregroundStyle(.secondary)
                         }
                         .font(.system(size: 10, weight: .medium))
                     }
                     if jobs.count > 3 {
-                        Text("另有 \(jobs.count - 3) 部影片等待处理")
+                        Text(language.text("queue.more", jobs.count - 3))
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -612,7 +668,7 @@ private struct VideoBatchCard: View {
                 }
                 .padding(.horizontal, 4)
 
-                Button("清空队列", action: clear)
+                Button(language.text("queue.clear"), action: clear)
                     .font(.system(size: 11, weight: .medium))
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
@@ -623,14 +679,14 @@ private struct VideoBatchCard: View {
 
     private var title: String {
         switch jobs.count {
-        case 0: "拖入一个或多个视频"
+        case 0: language.text("video.add")
         case 1: jobs[0].url.lastPathComponent
-        default: "已添加 \(jobs.count) 部影片"
+        default: language.text("video.added", jobs.count)
         }
     }
 
     private var subtitle: String {
-        jobs.isEmpty ? "支持 MP4、MOV、MKV、WebM、AVI、3GP、MPEG、TS 等" : "点击继续添加；将按队列逐部处理"
+        jobs.isEmpty ? language.text("video.support") : language.text("video.queueHint")
     }
 
     private func statusColor(for state: VideoJobState) -> Color {
@@ -646,13 +702,14 @@ private struct VideoBatchCard: View {
 private struct ProgressiveStoryboardPreview: View {
     let gridSide: Int
     let cardAspectRatio: Double
+    let language: AppLanguage
     let frames: [NSImage]
 
     var body: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: gridSide)
         let safeAspectRatio = min(3, max(1.0 / 3.0, cardAspectRatio))
         VStack(spacing: 12) {
-            Text("正在实时拼接 · \(frames.count) / \(gridSide * gridSide) 张")
+            Text(language.text("preview.live", frames.count, gridSide * gridSide))
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
             LazyVGrid(columns: columns, spacing: 6) {
@@ -685,13 +742,15 @@ private struct ProgressiveStoryboardPreview: View {
 }
 
 private struct EmptyPreview: View {
+    let language: AppLanguage
+
     var body: some View {
         VStack(spacing: 18) {
-            ShotTesseraMark().scaleEffect(1.7)
-            Text("让影片变成一张图")
+            ShotTesseraMark(language: language).scaleEffect(1.7)
+            Text(language.text("preview.empty.title"))
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
                 .foregroundStyle(PreviewText.primary)
-            Text("自动避开黑屏、模糊与重复画面，优先选择有人物的镜头。")
+            Text(language.text("preview.empty.description"))
                 .font(.system(size: 13))
                 .foregroundStyle(PreviewText.secondary)
                 .multilineTextAlignment(.center)

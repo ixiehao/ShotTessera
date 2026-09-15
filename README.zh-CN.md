@@ -4,7 +4,7 @@
 
 ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表性的画面，拼成一张干净的分镜图。`tessera` 意为马赛克的小拼片，正对应本项目把镜头组织为整体的方式。
 
-项目中文名为 **视频一键截屏拼图**，适合搜索“视频截图拼图”“视频一键截图”“分镜图生成器”“视频九宫格截图”“视频联系表”等关键词。
+项目名称为 **视频一键截屏拼图**，适合搜索“视频截图拼图”“视频一键截图”“分镜图生成器”“视频九宫格截图”“视频联系表”等关键词。
 
 ## 一张图看懂功能
 
@@ -23,17 +23,18 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 - 支持 MP4、MOV、M4V、AVI、MKV、WebM、3GP/3G2、MPEG、TS/M2TS、WMV、FLV 等常见容器。能否实际解码仍取决于当前 macOS 支持的视频编码。
 - 可显示每张截图的源时间码。
 - 默认不添加标题；开启“标题水印”后，使用视频文件名（不含扩展名）作为居中的半透明粗体标题。
+- 可在应用顶部切换中文、英文、日语界面；选择会被记住。
 - 输出自动保存到视频同目录，命名为 `视频名-shot-001.ext`，序号会安全递增。
 
 所有分析和导出均在本机完成。项目不包含账号、遥测、网络请求、云上传、Electron、FFmpeg 或 Python 运行时。
 
 ## 下载与使用
 
-1. 打开[最新发布页](https://github.com/ixiehao/ShotTessera/releases/latest)，下载适用于 Apple Silicon Mac 的 **DMG**。
+1. 打开[最新发布页](https://github.com/ixiehao/ShotTessera/releases/latest)，下载适用于 Apple Silicon 或 Intel Mac 的通用 **DMG**。
 2. 打开 DMG，将 **视频一键截屏拼图** 拖入“应用程序”文件夹。
 3. 打开应用，选择或直接拖入一个或多个视频即可使用。
 
-需要 Apple Silicon Mac 和 macOS 13 或更高版本。应用使用 ad-hoc 签名、尚未经过 Apple 公证；如果首次打开时出现系统拦截提示，请按住 Control 点按应用并选择“打开”。
+需要 Apple Silicon 或 Intel Mac，以及 macOS 13 或更高版本。应用使用 ad-hoc 签名、尚未经过 Apple 公证；如果首次打开时出现系统拦截提示，请按住 Control 点按应用并选择“打开”。
 
 ## 权利与归属
 
@@ -41,6 +42,7 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 - 应用只使用 Apple SDK 框架；未包含第三方应用代码、依赖包、分析 SDK、网络客户端或 MoviePrint 的素材。
 - 导出的标题使用随应用打包的 **Noto Sans CJK SC Bold 2.004**。该字体保持原样，采用 **SIL Open Font License 1.1**，可随商业软件嵌入与再发布；完整归属、版本和校验值见 [NOTICE.md](NOTICE.md) 与 [字体许可证](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt)。
 - 视频本身及其中已有的字幕、商标、水印和音乐等权利仍归相关权利人所有。生成分镜图并不授予发布或再分发权限。
+- 请遵守适用的当地法律，并仅处理你拥有或获授权处理的视频。
 
 以上是对本仓库源码与随附素材的工程审计，不构成针对具体视频或发行方式的法律意见。
 

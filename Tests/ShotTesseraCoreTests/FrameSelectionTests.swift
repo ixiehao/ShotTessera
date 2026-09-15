@@ -30,6 +30,25 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(TimestampFormatter.string(for: 3_723), "01:02:03")
     }
 
+    func testEveryInAppLanguageHasAllRequiredTranslations() {
+        for language in AppLanguage.allCases {
+            for key in AppLanguage.requiredLocalizationKeys {
+                XCTAssertNotEqual(language.text(key), key, "\(language.rawValue) is missing \(key)")
+            }
+            XCTAssertFalse(language.text("status.processing", 1, 2, "sample.mp4", 3, 9).contains("%"))
+            XCTAssertFalse(language.text("button.generate.batch", 2).contains("%"))
+            XCTAssertFalse(language.text("button.saveas", "PNG").contains("%"))
+        }
+    }
+
+    func testAspectLabelsAreTranslatedForEveryLanguage() {
+        for language in AppLanguage.allCases {
+            for aspect in StoryboardAspect.allCases {
+                XCTAssertFalse(aspect.label(in: language).isEmpty)
+            }
+        }
+    }
+
     func testTitleWatermarkUsesTheSourceFilenameWhenEnabled() {
         var settings = ExportSettings()
         let sourceURL = URL(fileURLWithPath: "/tmp/  夏日片段  .mp4")
