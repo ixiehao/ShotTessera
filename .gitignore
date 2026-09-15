@@ -3,3 +3,4 @@
 DerivedData/
 .swiftpm/
 *.xcodeproj/xcuserdata/
+dist/

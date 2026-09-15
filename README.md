@@ -1,8 +1,8 @@
-# ShotTessera
+# 视频一键截屏拼图 · ShotTessera
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-ShotTessera is a small, native macOS app that turns a video into one clean storyboard image. Its name joins **shot** with **tessera**, a small tile in a mosaic: selected video shots arranged into one visual whole.
+**视频一键截屏拼图** is the Chinese name of ShotTessera, a small native macOS app for turning video screenshots into one clean storyboard, contact sheet, or video screenshot collage. Its name joins **shot** with **tessera**, a small tile in a mosaic: selected video shots arranged into one visual whole.
 
 It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `CoreGraphics`, and `ImageIO`): no Electron, FFmpeg, Python runtime, analytics, network requests, or cloud upload.
 
@@ -19,6 +19,12 @@ It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `C
 - Keeps titles off by default; when **标题水印** is enabled, the source video's filename is placed as a large, translucent, centered overlay in the exported image using bundled **Noto Sans CJK SC Bold**.
 
 ShotTessera is an independent project. Its name, Tessera Iris icon, and interface are original; it is not affiliated with Apple, MoviePrint, or any video service.
+
+## Search terms
+
+Video screenshot collage, video contact sheet, storyboard generator, movie frame extractor, macOS video screenshot tool, 视频截屏拼图, 视频一键截图, 分镜图生成器, 视频九宫格截图, 動画スクリーンショット, 動画コンタクトシート.
+
+For a GitHub repository description, social-preview copy, and recommended topics, see [GitHub metadata](docs/GITHUB_METADATA.md).
 
 ## Rights and attribution
 
@@ -52,6 +58,19 @@ To run the algorithm tests from Terminal:
 ```sh
 swift test
 ```
+
+## Build a DMG
+
+On an Apple Silicon Mac, run:
+
+```sh
+./scripts/package_dmg.sh
+```
+
+This creates `dist/视频一键截屏拼图-0.1.0.dmg`, containing the Chinese-named
+macOS app, app icon, runtime resources, and all license notices. The package is
+ad-hoc signed for local integrity but is not Apple-notarized; when sharing it,
+recipients may need to Control-click the app and choose **Open** the first time.
 
 ## Privacy
 
