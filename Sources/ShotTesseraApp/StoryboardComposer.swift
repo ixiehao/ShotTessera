@@ -45,7 +45,7 @@ enum StoryboardComposer {
             )
         }
 
-        if let title = settings.visibleTitleWatermark {
+        if let title = settings.titleWatermark(for: result.sourceURL) {
             drawTitleWatermark(title, canvasSize: CGSize(width: width, height: height), context: context)
         }
 

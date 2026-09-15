@@ -14,7 +14,7 @@ It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `C
 - Lets you choose MP4, MOV, M4V, AVI, MKV, WebM, 3GP/3G2, MPEG, TS/M2TS, WMV, FLV, and related common containers.
 - Creates a PNG or JPEG at 1920 px wide or larger, then automatically saves it beside the source video as `video-name-shot-001.ext` (the number increments safely).
 - Can overlay each selected frame's source timecode (`HH:MM:SS`) when **显示时间** is enabled.
-- Keeps titles off by default; when **添加标题水印** is enabled, a custom title is placed as a large, translucent, centered overlay in the exported image.
+- Keeps titles off by default; when **标题水印** is enabled, the source video's filename is placed as a large, translucent, centered overlay in the exported image.
 
 ShotTessera is an independent project. Its name, Tessera Iris icon, and interface are original; it is not affiliated with Apple, MoviePrint, or any video service.
 

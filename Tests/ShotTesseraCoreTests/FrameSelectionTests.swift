@@ -29,15 +29,13 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(TimestampFormatter.string(for: 3_723), "01:02:03")
     }
 
-    func testEmptyWatermarkTitleIsNotRenderedAndWhitespaceIsTrimmed() {
+    func testTitleWatermarkUsesTheSourceFilenameWhenEnabled() {
         var settings = ExportSettings()
-        XCTAssertNil(settings.visibleTitleWatermark)
+        let sourceURL = URL(fileURLWithPath: "/tmp/  夏日片段  .mp4")
+        XCTAssertNil(settings.titleWatermark(for: sourceURL))
 
-        settings.titleWatermark = "   \n "
-        XCTAssertNil(settings.visibleTitleWatermark)
-
-        settings.titleWatermark = "  夏日片段  "
-        XCTAssertEqual(settings.visibleTitleWatermark, "夏日片段")
+        settings.showTitleWatermark = true
+        XCTAssertEqual(settings.titleWatermark(for: sourceURL), "夏日片段")
     }
 
     func testComposerRendersAVisibleTitleWatermark() throws {
@@ -55,7 +53,7 @@ final class FrameSelectionTests: XCTestCase {
         let plainData = try StoryboardComposer.render(result: result, settings: baseSettings)
         let titledData = try StoryboardComposer.render(
             result: result,
-            settings: ExportSettings(gridSide: 3, format: .png, width: 1920, titleWatermark: "夏日片段")
+            settings: ExportSettings(gridSide: 3, format: .png, width: 1920, showTitleWatermark: true)
         )
         XCTAssertNotEqual(plainData, titledData)
     }

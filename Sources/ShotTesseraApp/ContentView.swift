@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = StoryboardViewModel()
-    @State private var watermarkTitleNeedsFocus = false
 
     var body: some View {
         ZStack {
@@ -82,64 +81,39 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
                 .disabled(model.isProcessing)
-                HStack(spacing: 10) {
+                HStack(spacing: 6) {
                     Stepper(value: $model.width, in: 1920...12_000, step: 160) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("图像宽度")
-                            Text("\(model.width) px")
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("宽度 \(model.width) px")
+                            .monospacedDigit()
                     }
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .accessibilityHint("输出图片宽度最低为 1920 像素")
                     .disabled(model.isProcessing)
 
-                    Divider().frame(height: 30)
+                    Divider().frame(height: 24)
 
-                    Toggle("显示时间", isOn: $model.showTimestamps)
-                        .font(.system(size: 12, weight: .medium))
+                    Toggle("时间", isOn: $model.showTimestamps)
+                        .font(.system(size: 11, weight: .medium))
                         .toggleStyle(.switch)
                         .fixedSize()
                         .disabled(model.isProcessing)
-                }
 
-                HStack(spacing: 9) {
-                    Toggle("标题水印", isOn: $model.showTitleWatermark)
-                        .font(.system(size: 12, weight: .medium))
+                    Divider().frame(height: 24)
+
+                    Toggle("标题", isOn: $model.showTitleWatermark)
+                        .font(.system(size: 11, weight: .medium))
                         .toggleStyle(.switch)
                         .fixedSize()
                         .disabled(model.isProcessing)
-                        .onChange(of: model.showTitleWatermark) { isEnabled in
-                            guard isEnabled else {
-                                watermarkTitleNeedsFocus = false
-                                return
-                            }
-                            watermarkTitleNeedsFocus = true
-                        }
-
-                    if model.showTitleWatermark {
-                        NativeTitleField(
-                            text: $model.watermarkTitle,
-                            needsFocus: $watermarkTitleNeedsFocus,
-                            isEnabled: !model.isProcessing
-                        )
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 31)
-                            .padding(.horizontal, 10)
-                            .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(Color.white.opacity(0.24))
-                            }
-                            .accessibilityLabel("水印标题")
-                            .accessibilityHint("输入后会以居中半透明大字写入图片")
-                            .transition(.opacity.combined(with: .move(edge: .trailing)))
-                    }
                 }
                 Text("最低 1920 px；所有画面只在本机处理。")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                if model.showTitleWatermark {
+                    Text("标题水印将自动使用视频文件名。")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer(minLength: 0)
@@ -231,7 +205,6 @@ final class StoryboardViewModel: ObservableObject {
     @Published var width = 2560
     @Published var showTimestamps = false
     @Published var showTitleWatermark = false
-    @Published var watermarkTitle = ""
     @Published var previewImage: NSImage?
     @Published var livePreviewFrames: [NSImage] = []
     @Published private(set) var activeGridSide = 4
@@ -328,7 +301,7 @@ final class StoryboardViewModel: ObservableObject {
             format: format,
             width: width,
             showTimestamps: showTimestamps,
-            titleWatermark: showTitleWatermark ? watermarkTitle : nil
+            showTitleWatermark: showTitleWatermark
         )
         let analyzer = VideoStoryboardAnalyzer()
         let bridge = UIStateBridge(model: self)
@@ -678,76 +651,6 @@ private enum PreviewText {
     /// Explicit colors keep the copy readable even when macOS resolves the window as light appearance.
     static let primary = Color(red: 0.84, green: 0.94, blue: 1.00)
     static let secondary = Color(red: 0.62, green: 0.76, blue: 0.91)
-}
-
-/// Uses AppKit's field directly so CJK composition and paste always use the
-/// window's native field editor instead of a misplaced SwiftUI overlay.
-private struct NativeTitleField: NSViewRepresentable {
-    @Binding var text: String
-    @Binding var needsFocus: Bool
-    let isEnabled: Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, needsFocus: $needsFocus)
-    }
-
-    func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField()
-        field.delegate = context.coordinator
-        field.isBordered = false
-        field.drawsBackground = false
-        field.isBezeled = false
-        field.focusRingType = .none
-        field.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        field.textColor = NSColor.white
-        field.alignment = .left
-        field.lineBreakMode = .byTruncatingTail
-        field.maximumNumberOfLines = 1
-        field.cell?.wraps = false
-        field.cell?.isScrollable = true
-        field.placeholderAttributedString = NSAttributedString(
-            string: "输入标题",
-            attributes: [
-                .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.34)
-            ]
-        )
-        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        return field
-    }
-
-    func updateNSView(_ field: NSTextField, context: Context) {
-        field.isEnabled = isEnabled
-        if field.stringValue != text { field.stringValue = text }
-        guard isEnabled, needsFocus, field.currentEditor() == nil else { return }
-        DispatchQueue.main.async {
-            guard field.isEnabled, field.currentEditor() == nil else { return }
-            field.window?.makeFirstResponder(field)
-        }
-    }
-
-    final class Coordinator: NSObject, NSTextFieldDelegate {
-        private var text: Binding<String>
-        private var needsFocus: Binding<Bool>
-
-        init(text: Binding<String>, needsFocus: Binding<Bool>) {
-            self.text = text
-            self.needsFocus = needsFocus
-        }
-
-        func controlTextDidBeginEditing(_ notification: Notification) {
-            needsFocus.wrappedValue = true
-        }
-
-        func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSTextField else { return }
-            text.wrappedValue = field.stringValue
-        }
-
-        func controlTextDidEndEditing(_ notification: Notification) {
-            needsFocus.wrappedValue = false
-        }
-    }
 }
 
 private struct GridChoiceStyle: ButtonStyle {
