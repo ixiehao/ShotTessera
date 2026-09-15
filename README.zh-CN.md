@@ -27,27 +27,13 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 
 所有分析和导出均在本机完成。项目不包含账号、遥测、网络请求、云上传、Electron、FFmpeg 或 Python 运行时。
 
-## 运行
+## 下载与使用
 
-1. 使用 Xcode 15 或更高版本打开 `Package.swift`。
-2. 选择 **ShotTessera** scheme，按 `⌘R` 运行。
-3. 选择或拖入一个或多个视频，设置网格和导出选项后开始生成。
+1. 打开[最新发布页](https://github.com/ixiehao/ShotTessera/releases/latest)，下载适用于 Apple Silicon Mac 的 **DMG**。
+2. 打开 DMG，将 **视频一键截屏拼图** 拖入“应用程序”文件夹。
+3. 打开应用，选择或直接拖入一个或多个视频即可使用。
 
-终端运行测试：
-
-```sh
-swift test
-```
-
-## 打包 DMG
-
-在 Apple Silicon Mac 上运行：
-
-```sh
-./scripts/package_dmg.sh
-```
-
-会生成 `dist/视频一键截屏拼图-0.1.0.dmg`，其中包含中文名应用、图标、运行资源及全部许可证。该包使用 ad-hoc 签名校验本地完整性，但没有 Apple 公证；分发给他人后，首次打开可能需要按住 Control 点按应用并选择“打开”。
+需要 Apple Silicon Mac 和 macOS 13 或更高版本。应用使用 ad-hoc 签名、尚未经过 Apple 公证；如果首次打开时出现系统拦截提示，请按住 Control 点按应用并选择“打开”。
 
 ## 权利与归属
 

@@ -27,27 +27,13 @@ ShotTessera は、動画から代表的なフレームを選び、一枚の見�
 
 解析と書き出しはすべてローカルで行われます。アカウント、テレメトリー、ネットワーク通信、クラウドアップロード、Electron、FFmpeg、Python ランタイムは含まれません。
 
-## 実行方法
+## ダウンロードして使う
 
-1. Xcode 15 以降で `Package.swift` を開きます。
-2. **ShotTessera** scheme を選び、`⌘R` で実行します。
-3. 動画を選択またはドラッグし、グリッドと書き出し設定を選んで生成します。
+1. [最新リリース](https://github.com/ixiehao/ShotTessera/releases/latest)を開き、Apple Silicon Mac 用の **DMG** をダウンロードします。
+2. DMG を開き、**视频一键截屏拼图** を「アプリケーション」フォルダへドラッグします。
+3. アプリを開き、動画を一つ以上選択するかドラッグ＆ドロップします。
 
-ターミナルでのテスト実行：
-
-```sh
-swift test
-```
-
-## DMG の作成
-
-Apple Silicon Mac では、次を実行します。
-
-```sh
-./scripts/package_dmg.sh
-```
-
-`dist/视频一键截屏拼图-0.1.0.dmg` が作成されます。中国語名のアプリ、アイコン、実行時リソース、すべてのライセンス通知を含みます。このパッケージはローカル整合性のため ad-hoc 署名されていますが、Apple の公証は受けていません。配布先では初回のみ Control-click して「開く」を選ぶ必要がある場合があります。
+Apple Silicon Mac と macOS 13 以降が必要です。アプリは ad-hoc 署名済みですが Apple の公証は受けていません。初回起動時に Gatekeeper の警告が出る場合は、Control-click して「開く」を選んでください。
 
 ## 権利と帰属
 

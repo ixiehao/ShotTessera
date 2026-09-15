@@ -49,36 +49,13 @@ The original **Tessera Iris** icon is an abstract viewfinder: nine rounded story
 
 ![ShotTessera app icon](Assets/AppIcon-1024-source.png)
 
-## Requirements
+## Download and use
 
-- macOS 13 or later
-- Xcode 15 or later to build and run
+1. Open [the latest release](https://github.com/ixiehao/ShotTessera/releases/latest) and download the **DMG** for Apple Silicon Mac.
+2. Open the DMG and drag **视频一键截屏拼图** into **Applications**.
+3. Open the app, then choose or drop in one or more videos.
 
-## Run locally
-
-1. Clone the repository.
-2. Open `Package.swift` in Xcode.
-3. Choose **ShotTessera** as the scheme and press Run.
-4. Choose or drop one or more common video containers into the window. The queue runs sequentially, so several videos do not compete for decoder resources. The container can be selected, but its video codec must still be decodable by your macOS installation; ShotTessera deliberately has no bundled FFmpeg runtime.
-
-To run the algorithm tests from Terminal:
-
-```sh
-swift test
-```
-
-## Build a DMG
-
-On an Apple Silicon Mac, run:
-
-```sh
-./scripts/package_dmg.sh
-```
-
-This creates `dist/视频一键截屏拼图-0.1.0.dmg`, containing the Chinese-named
-macOS app, app icon, runtime resources, and all license notices. The package is
-ad-hoc signed for local integrity but is not Apple-notarized; when sharing it,
-recipients may need to Control-click the app and choose **Open** the first time.
+Requires an Apple Silicon Mac running macOS 13 or later. The app is ad-hoc signed but not Apple-notarized; if macOS shows a Gatekeeper warning on first launch, Control-click the app and choose **Open**.
 
 ## Privacy
 
