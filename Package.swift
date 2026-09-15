@@ -2,20 +2,20 @@
 import PackageDescription
 
 let package = Package(
-    name: "FrameWeave",
+    name: "ShotTessera",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "FrameWeave", targets: ["FrameWeaveApp"])
+        .executable(name: "ShotTessera", targets: ["ShotTesseraApp"])
     ],
     targets: [
         .executableTarget(
-            name: "FrameWeaveApp",
-            path: "Sources/FrameWeaveApp"
+            name: "ShotTesseraApp",
+            path: "Sources/ShotTesseraApp"
         ),
         .testTarget(
-            name: "FrameWeaveCoreTests",
-            dependencies: ["FrameWeaveApp"],
-            path: "Tests/FrameWeaveCoreTests"
+            name: "ShotTesseraCoreTests",
+            dependencies: ["ShotTesseraApp"],
+            path: "Tests/ShotTesseraCoreTests"
         )
     ]
 )

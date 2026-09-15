@@ -1,5 +1,5 @@
 import XCTest
-@testable import FrameWeaveApp
+@testable import ShotTesseraApp
 
 final class FrameSelectionTests: XCTestCase {
     func testHistogramDistanceIsZeroForSameFrame() {

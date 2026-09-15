@@ -1,6 +1,6 @@
 # Privacy
 
-FrameWeave processes a video entirely on the device that opens it.
+ShotTessera processes a video entirely on the device that opens it.
 
 - No user account or analytics SDK is included.
 - No video, frame, path, face-detection result, or generated storyboard is sent over the network.

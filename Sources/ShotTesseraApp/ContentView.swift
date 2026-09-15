@@ -33,9 +33,9 @@ struct ContentView: View {
     private var controlPanel: some View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 12) {
-                FrameWeaveMark()
+                ShotTesseraMark()
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("FrameWeave")
+                    Text("ShotTessera")
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                     Text("把影片织成一张分镜图")
                         .font(.system(size: 12, weight: .medium))
@@ -253,7 +253,7 @@ final class StoryboardViewModel: ObservableObject {
     func save(data: Data, source: URL, format: ExportFormat) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [format == .png ? .png : .jpeg]
-        panel.nameFieldStringValue = "\(source.deletingPathExtension().lastPathComponent)-frameweave.\(format.fileExtension)"
+        panel.nameFieldStringValue = "\(source.deletingPathExtension().lastPathComponent)-shottessera.\(format.fileExtension)"
         panel.begin { response in
             guard response == .OK, let destination = panel.url else { return }
             do { try data.write(to: destination, options: .atomic) }
@@ -299,7 +299,7 @@ private final class UIStateBridge: @unchecked Sendable {
     }
 }
 
-private struct FrameWeaveMark: View {
+private struct ShotTesseraMark: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -353,7 +353,7 @@ private struct VideoDropCard: View {
 private struct EmptyPreview: View {
     var body: some View {
         VStack(spacing: 18) {
-            FrameWeaveMark().scaleEffect(1.7)
+            ShotTesseraMark().scaleEffect(1.7)
             Text("让影片变成一张图")
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
             Text("自动避开黑屏、模糊与重复画面，优先选择有人物的镜头。")

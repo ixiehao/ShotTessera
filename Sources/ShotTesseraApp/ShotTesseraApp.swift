@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct FrameWeaveApp: App {
+struct ShotTesseraApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
