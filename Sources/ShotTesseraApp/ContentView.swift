@@ -93,6 +93,10 @@ struct ContentView: View {
                 .font(.system(size: 13, weight: .medium))
                 .accessibilityHint("输出图片宽度最低为 1920 像素")
                 .disabled(model.isProcessing)
+                Toggle("显示时间", isOn: $model.showTimestamps)
+                    .font(.system(size: 13, weight: .medium))
+                    .toggleStyle(.switch)
+                    .disabled(model.isProcessing)
                 Text("最低 1920 px；所有画面只在本机处理。")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -184,6 +188,7 @@ final class StoryboardViewModel: ObservableObject {
     @Published var gridSide = 4
     @Published var format: ExportFormat = .png
     @Published var width = 2560
+    @Published var showTimestamps = false
     @Published var previewImage: NSImage?
     @Published var livePreviewFrames: [NSImage] = []
     @Published private(set) var activeGridSide = 4
@@ -228,6 +233,7 @@ final class StoryboardViewModel: ObservableObject {
     func chooseVideo() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.movie]
+        panel.allowsOtherFileTypes = true
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         if panel.runModal() == .OK { addVideos(panel.urls) }
@@ -235,11 +241,17 @@ final class StoryboardViewModel: ObservableObject {
 
     func addVideos(_ urls: [URL]) {
         var knownPaths = Set(videoJobs.map { $0.url.standardizedFileURL.path })
-        let additions = urls
+        let candidates = urls
             .map(\.standardizedFileURL)
+        let additions = candidates
+            .filter(SupportedVideoInput.accepts)
             .filter { knownPaths.insert($0.path).inserted }
             .map { VideoJob(url: $0) }
         videoJobs.append(contentsOf: additions)
+        if additions.count < candidates.count {
+            errorMessage = "已忽略不是常见视频格式的文件。支持 MP4、MOV、MKV、WebM、AVI、3GP、MPEG、TS 等。"
+            showError = true
+        }
     }
 
     func clearVideos() {
@@ -251,6 +263,7 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     func acceptDrop(providers: [NSItemProvider]) -> Bool {
+        guard !isProcessing else { return false }
         let fileProviders = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
         guard !fileProviders.isEmpty else { return false }
         for provider in fileProviders {
@@ -267,7 +280,12 @@ final class StoryboardViewModel: ObservableObject {
         guard !videoJobs.isEmpty else { return }
         isProcessing = true
         progress = 0
-        let settings = ExportSettings(gridSide: gridSide, format: format, width: width)
+        let settings = ExportSettings(
+            gridSide: gridSide,
+            format: format,
+            width: width,
+            showTimestamps: showTimestamps
+        )
         let analyzer = VideoStoryboardAnalyzer()
         let bridge = UIStateBridge(model: self)
         let sourceURLs = videoJobs.map(\.url)
@@ -543,7 +561,7 @@ private struct VideoBatchCard: View {
     }
 
     private var subtitle: String {
-        jobs.isEmpty ? "MP4、MOV 或 macOS 支持的格式" : "点击继续添加；将按队列逐部处理"
+        jobs.isEmpty ? "支持 MP4、MOV、MKV、WebM、AVI、3GP、MPEG、TS 等" : "点击继续添加；将按队列逐部处理"
     }
 
     private func statusColor(for state: VideoJobState) -> Color {

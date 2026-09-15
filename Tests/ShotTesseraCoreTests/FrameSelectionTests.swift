@@ -22,6 +22,19 @@ final class FrameSelectionTests: XCTestCase {
         )
     }
 
+    func testTimestampFormatting() {
+        XCTAssertEqual(TimestampFormatter.string(for: 0), "00:00:00")
+        XCTAssertEqual(TimestampFormatter.string(for: 83.9), "00:01:23")
+        XCTAssertEqual(TimestampFormatter.string(for: 3_723), "01:02:03")
+    }
+
+    func testCommonVideoContainersAreAccepted() {
+        for fileExtension in ["mp4", "mov", "mkv", "webm", "avi", "3gp", "mpeg", "ts"] {
+            XCTAssertTrue(SupportedVideoInput.accepts(URL(fileURLWithPath: "/tmp/sample.\(fileExtension)")))
+        }
+        XCTAssertFalse(SupportedVideoInput.accepts(URL(fileURLWithPath: "/tmp/notes.txt")))
+    }
+
     func testHistogramDistanceIsZeroForSameFrame() {
         XCTAssertEqual(FrameSelection.histogramDistance([0.5, 0.5], [0.5, 0.5]), 0, accuracy: 0.0001)
     }

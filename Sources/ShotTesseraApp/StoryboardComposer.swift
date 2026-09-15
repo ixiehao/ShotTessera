@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import CoreText
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -35,7 +36,13 @@ enum StoryboardComposer {
             let y = margin + row * (cellHeight + gap)
             let rect = CGRect(x: x, y: y, width: cellWidth, height: cellHeight)
             let frame = result.frames[safe: cellIndex] ?? result.frames.last
-            drawCard(in: context, rect: rect, imageData: frame?.jpegData)
+            drawCard(
+                in: context,
+                rect: rect,
+                imageData: frame?.jpegData,
+                timestamp: frame?.time,
+                showsTimestamp: settings.showTimestamps
+            )
         }
 
         guard let image = context.makeImage() else { throw StoryboardError.noExportData }
@@ -50,7 +57,13 @@ enum StoryboardComposer {
         return mutableData as Data
     }
 
-    private static func drawCard(in context: CGContext, rect: CGRect, imageData: Data?) {
+    private static func drawCard(
+        in context: CGContext,
+        rect: CGRect,
+        imageData: Data?,
+        timestamp: Double?,
+        showsTimestamp: Bool
+    ) {
         let radius = min(rect.width, rect.height) * 0.055
         let cardPath = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
         context.setFillColor(CGColor(red: 0.15, green: 0.17, blue: 0.22, alpha: 1))
@@ -68,6 +81,40 @@ enum StoryboardComposer {
         context.setLineWidth(max(1, rect.width * 0.003))
         context.addPath(cardPath)
         context.strokePath()
+
+        if showsTimestamp, let timestamp {
+            drawTimestamp(timestamp, in: rect, context: context)
+        }
+    }
+
+    private static func drawTimestamp(_ timestamp: Double, in rect: CGRect, context: CGContext) {
+        let fontSize = max(10, rect.width * 0.043)
+        let font = CTFontCreateWithName("SF Pro Rounded" as CFString, fontSize, nil)
+        let text = TimestampFormatter.string(for: timestamp) as CFString
+        let attributes: [CFString: Any] = [
+            kCTFontAttributeName: font,
+            kCTForegroundColorAttributeName: CGColor(gray: 1, alpha: 0.96)
+        ]
+        let line = CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, text, attributes as CFDictionary))
+        let textWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        let horizontalPadding = fontSize * 0.52
+        let verticalPadding = fontSize * 0.30
+        let labelHeight = fontSize + verticalPadding * 2
+        let labelRect = CGRect(
+            x: rect.minX + fontSize * 0.42,
+            y: rect.minY + fontSize * 0.42,
+            width: textWidth + horizontalPadding * 2,
+            height: labelHeight
+        )
+
+        context.saveGState()
+        context.setFillColor(CGColor(red: 0.02, green: 0.03, blue: 0.05, alpha: 0.72))
+        context.addPath(CGPath(roundedRect: labelRect, cornerWidth: labelHeight * 0.36, cornerHeight: labelHeight * 0.36, transform: nil))
+        context.fillPath()
+        context.textMatrix = .identity
+        context.textPosition = CGPoint(x: labelRect.minX + horizontalPadding, y: labelRect.minY + verticalPadding)
+        CTLineDraw(line, context)
+        context.restoreGState()
     }
 
     private static func drawAspectFill(_ image: CGImage, in rect: CGRect, context: CGContext) {

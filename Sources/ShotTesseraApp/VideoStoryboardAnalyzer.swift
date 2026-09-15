@@ -8,10 +8,10 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
     // The analysis thumbnail is also the storyboard source. Reusing it avoids a
     // second random-access decode pass after selection, which is the slowest part
     // of many H.264/HEVC files.
-    private let maximumAnalysisSamples = 180
+    private let maximumAnalysisSamples = 144
     private let minimumAnalysisEdge: CGFloat = 480
     private let maximumAnalysisEdge: CGFloat = 1280
-    private let maximumVisionCandidates = 42
+    private let maximumVisionCandidates = 24
 
     func analyze(
         videoURL: URL,
@@ -21,11 +21,14 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         onPreviewFrame: @escaping @Sendable (CapturedFrame, Int, Int) -> Void
     ) async throws -> StoryboardResult {
         let asset = AVURLAsset(url: videoURL)
+        let isPlayable = try await asset.load(.isPlayable)
+        guard isPlayable else { throw StoryboardError.unsupportedCodec }
         let duration = try await asset.load(.duration).seconds
         guard duration.isFinite, duration > 0 else { throw StoryboardError.unreadableVideo }
 
         let targetCount = gridSide * gridSide
-        let sampleCount = min(maximumAnalysisSamples, max(targetCount * 2, 72))
+        let requestedSamples = max(48, Int((Double(targetCount) * 1.5).rounded(.up)))
+        let sampleCount = min(maximumAnalysisSamples, requestedSamples)
         let interval = max(0.22, duration / Double(sampleCount))
         let analysisGenerator = imageGenerator(
             asset: asset,
@@ -62,7 +65,7 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         // and high-quality candidates instead of inspecting the entire timeline.
         let visionSampleCount = min(
             descriptors.count,
-            min(maximumVisionCandidates, max(18, targetCount / 2))
+            min(maximumVisionCandidates, max(12, targetCount / 3))
         )
         let visionCandidates = peopleCandidates(from: descriptors, count: visionSampleCount)
         var scoreByID: [Int: Float] = [:]
@@ -93,8 +96,8 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
             onPreviewFrame(frame, captured.count, selected.count)
             progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))
             // Keep the preview visibly progressive without adding a perceptible
-            // wait: 0.7 seconds or less for a full grid.
-            let revealDelay = UInt64(max(12, min(45, 720 / max(1, selected.count)))) * 1_000_000
+            // wait: roughly half a second for a complete grid.
+            let revealDelay = UInt64(max(8, min(35, 560 / max(1, selected.count)))) * 1_000_000
             try await Task.sleep(nanoseconds: revealDelay)
         }
 
@@ -133,7 +136,7 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
     }
 
     private func jpegData(from image: CGImage) -> Data? {
-        NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.90])
+        NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.88])
     }
 
     private func cgImage(from data: Data?) -> CGImage? {
@@ -159,25 +162,29 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
     private func peopleScore(in image: CGImage) -> Float {
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         let faces = VNDetectFaceRectanglesRequest()
-        let bodies = VNDetectHumanRectanglesRequest()
-        bodies.upperBodyOnly = false
-        guard (try? handler.perform([faces, bodies])) != nil else { return 0 }
-
+        guard (try? handler.perform([faces])) != nil else { return 0 }
         let faceArea = (faces.results ?? [])
             .map { Float($0.boundingBox.width * $0.boundingBox.height) }
             .max() ?? 0
+        let faceScore = min(1, faceArea * 10)
+        // Face detection is cheaper than the full-body request. A usable close-up
+        // needs no second Vision pass.
+        if faceScore >= 0.28 { return faceScore * 0.9 }
+
+        let bodies = VNDetectHumanRectanglesRequest()
+        bodies.upperBodyOnly = false
+        guard (try? handler.perform([bodies])) != nil else { return faceScore * 0.9 }
         let bodyArea = (bodies.results ?? [])
             .map { Float($0.boundingBox.width * $0.boundingBox.height) }
             .max() ?? 0
 
         // A clear close-up is useful, while a large human rectangle favors full-body shots.
-        let faceScore = min(1, faceArea * 10)
         let bodyScore = min(1, bodyArea * 4)
         return max(faceScore * 0.9, bodyScore)
     }
 
     private func visionPreview(from image: CGImage) -> CGImage {
-        let maxEdge: CGFloat = 540
+        let maxEdge: CGFloat = 400
         let longestEdge = max(CGFloat(image.width), CGFloat(image.height))
         guard longestEdge > maxEdge else { return image }
         let scale = maxEdge / longestEdge

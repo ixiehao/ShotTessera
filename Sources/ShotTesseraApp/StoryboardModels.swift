@@ -12,9 +12,20 @@ struct ExportSettings: Sendable {
     var gridSide: Int = 4
     var format: ExportFormat = .png
     var width: Int = 2560
+    var showTimestamps = false
 
     var frameCount: Int { gridSide * gridSide }
     var safeWidth: Int { max(1920, min(width, 12_000)) }
+}
+
+enum TimestampFormatter {
+    static func string(for seconds: Double) -> String {
+        let totalSeconds = max(0, Int(seconds.rounded(.down)))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let remainder = totalSeconds % 60
+        return String(format: "%02d:%02d:%02d", hours, minutes, remainder)
+    }
 }
 
 enum ExportDestination {
@@ -103,12 +114,14 @@ struct StoryboardResult: Sendable {
 
 enum StoryboardError: LocalizedError {
     case unreadableVideo
+    case unsupportedCodec
     case noUsableFrames
     case noExportData
 
     var errorDescription: String? {
         switch self {
-        case .unreadableVideo: "无法读取此视频。请尝试 MP4 或 MOV 文件。"
+        case .unreadableVideo: "无法读取此视频。请确认文件没有损坏，并尝试系统播放器能够打开的视频。"
+        case .unsupportedCodec: "已识别此视频格式，但当前 macOS 无法解码其中的编码。请在系统播放器中确认能播放，或转换为 H.264/H.265 的 MP4、MOV。"
         case .noUsableFrames: "没有找到足够清晰、明亮的画面。"
         case .noExportData: "无法生成导出图片。"
         }

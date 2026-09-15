@@ -11,7 +11,9 @@ It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `C
 - Rejects near-black, low-detail, and near-duplicate frames.
 - Creates 3×3 through 9×9 rounded-card storyboard grids.
 - Accepts multiple videos and processes the queue one video at a time, showing live tiles as each storyboard is assembled.
+- Lets you choose MP4, MOV, M4V, AVI, MKV, WebM, 3GP/3G2, MPEG, TS/M2TS, WMV, FLV, and related common containers.
 - Creates a PNG or JPEG at 1920 px wide or larger, then automatically saves it beside the source video as `video-name-shot-001.ext` (the number increments safely).
+- Can overlay each selected frame's source timecode (`HH:MM:SS`) when **显示时间** is enabled.
 
 ShotTessera is an independent project. Its name, Tessera Iris icon, and interface are original; it is not affiliated with Apple, MoviePrint, or any video service.
 
@@ -31,7 +33,7 @@ The original **Tessera Iris** icon is an abstract viewfinder: nine rounded story
 1. Clone the repository.
 2. Open `Package.swift` in Xcode.
 3. Choose **ShotTessera** as the scheme and press Run.
-4. Choose or drop one or more MP4, MOV, or other AVFoundation-supported videos into the window. The queue runs sequentially, so several videos do not compete for decoder resources.
+4. Choose or drop one or more common video containers into the window. The queue runs sequentially, so several videos do not compete for decoder resources. The container can be selected, but its video codec must still be decodable by your macOS installation; ShotTessera deliberately has no bundled FFmpeg runtime.
 
 To run the algorithm tests from Terminal:
 
