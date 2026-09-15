@@ -13,16 +13,14 @@
 "aspect.vertical" = "Portrait 3:4";
 "aspect.portrait" = "Portrait 9:16";
 "aspect.ultraWide" = "Ultrawide 21:9";
-"aspect.help" = "Keeps the source composition by default.";
 "section.export" = "Export";
 "export.autosave" = "Saved beside the video.";
 "export.format" = "Image format";
 "export.width" = "Width";
 "export.width.value" = "%d px";
-"export.width.hint" = "Output width is at least 1920 pixels";
 "export.time" = "Show time on tiles";
 "export.title" = "Show file title";
-"export.local.note" = "1920 px minimum; local processing. Follow applicable local laws.";
+"export.local.note" = "Follow applicable local laws.";
 "button.generate.single" = "Create Storyboard";
 "button.generate.batch" = "Create %d Storyboards";
 "button.cancel" = "Cancel";

@@ -23,8 +23,8 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     static let requiredLocalizationKeys = [
         "alert.generation.title", "button.ok", "app.tagline", "app.language", "app.icon.accessibility",
         "section.grid", "section.frame", "section.aspect", "aspect.source", "aspect.landscape", "aspect.standard",
-        "aspect.square", "aspect.vertical", "aspect.portrait", "aspect.ultraWide", "aspect.help",
-        "section.export", "export.autosave", "export.format", "export.width", "export.width.value", "export.width.hint",
+        "aspect.square", "aspect.vertical", "aspect.portrait", "aspect.ultraWide",
+        "section.export", "export.autosave", "export.format", "export.width", "export.width.value",
         "export.time", "export.title", "export.local.note", "button.generate.single",
         "button.generate.batch", "button.cancel", "accessibility.generating", "accessibility.generate",
         "accessibility.analyzing", "preview.title", "button.saveas", "status.processing", "status.empty",

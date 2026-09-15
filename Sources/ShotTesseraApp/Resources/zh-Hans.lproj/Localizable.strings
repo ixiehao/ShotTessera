@@ -13,16 +13,14 @@
 "aspect.vertical" = "竖屏 3:4";
 "aspect.portrait" = "竖屏 9:16";
 "aspect.ultraWide" = "超宽 21:9";
-"aspect.help" = "默认保留原视频画面。";
 "section.export" = "导出";
 "export.autosave" = "自动保存到视频同目录。";
 "export.format" = "最终图片格式";
 "export.width" = "宽度";
 "export.width.value" = "%d px";
-"export.width.hint" = "输出图片宽度最低为 1920 像素";
 "export.time" = "小图显示时间";
 "export.title" = "显示文件标题";
-"export.local.note" = "最低 1920 px，本机处理；请遵守当地法律。";
+"export.local.note" = "请遵守当地法律。";
 "button.generate.single" = "一键生成分镜图";
 "button.generate.batch" = "批量生成 %d 部分镜图";
 "button.cancel" = "取消生成";

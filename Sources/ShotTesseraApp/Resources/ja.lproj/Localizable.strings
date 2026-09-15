@@ -13,16 +13,14 @@
 "aspect.vertical" = "縦長 3:4";
 "aspect.portrait" = "縦長 9:16";
 "aspect.ultraWide" = "ウルトラワイド 21:9";
-"aspect.help" = "既定では元動画の構図を保ちます。";
 "section.export" = "書き出し";
 "export.autosave" = "動画と同じフォルダに保存します。";
 "export.format" = "画像形式";
 "export.width" = "幅";
 "export.width.value" = "%d px";
-"export.width.hint" = "出力画像の幅は 1920 ピクセル以上です";
 "export.time" = "各コマに時刻を表示";
 "export.title" = "ファイル名を表示";
-"export.local.note" = "最低 1920 px。ローカル処理です。適用される法令を守ってください。";
+"export.local.note" = "適用される現地の法令を守ってください。";
 "button.generate.single" = "絵コンテを作成";
 "button.generate.batch" = "%d 本の絵コンテを作成";
 "button.cancel" = "キャンセル";

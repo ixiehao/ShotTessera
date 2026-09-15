@@ -7,6 +7,7 @@ struct ContentView: View {
     @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
     @State private var isLanguagePickerPresented = false
     @State private var isAspectPickerPresented = false
+    @State private var isWidthPickerPresented = false
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .chinese
@@ -172,6 +173,70 @@ struct ContentView: View {
         }
     }
 
+    private var widthSelector: some View {
+        Button {
+            isWidthPickerPresented.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Text(t("export.width"))
+                    .font(.system(size: 11, weight: .medium))
+                Spacer(minLength: 0)
+                Text(t("export.width.value", model.width))
+                    .font(.system(size: 11, weight: .medium))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.primary)
+            .compactOptionSurface()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(t("export.width"))
+        .disabled(model.isProcessing)
+        .popover(isPresented: $isWidthPickerPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(t("export.width"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 2)
+
+                ForEach(outputWidthChoices, id: \.self) { width in
+                    Button {
+                        model.width = width
+                        isWidthPickerPresented = false
+                    } label: {
+                        HStack {
+                            Text(t("export.width.value", width))
+                                .monospacedDigit()
+                            Spacer()
+                            if width == model.width {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .background(width == model.width ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .contentShape(Rectangle())
+                }
+            }
+            .padding(8)
+            .frame(width: 148)
+        }
+    }
+
+    private var outputWidthChoices: [Int] { [1920, 2560, 3840, 5120, 7680, 12_000] }
+
     private var controlPanel: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
@@ -220,26 +285,9 @@ struct ContentView: View {
                     spacing: 8
                 ) {
                     aspectSelector
-                    HStack(spacing: 4) {
-                        Text(t("export.width"))
-                            .font(.system(size: 11, weight: .medium))
-                        Spacer(minLength: 0)
-                        Text(t("export.width.value", model.width))
-                            .font(.system(size: 11, weight: .medium))
-                            .monospacedDigit()
-                        Stepper("", value: $model.width, in: 1920...12_000, step: 160)
-                            .labelsHidden()
-                            .controlSize(.small)
-                            .accessibilityHint(t("export.width.hint"))
-                            .disabled(model.isProcessing)
-                    }
-                    .compactOptionSurface()
-                    .frame(maxWidth: .infinity)
+                    widthSelector
                 }
                 .frame(maxWidth: .infinity)
-                Text(t("aspect.help"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 10) {
