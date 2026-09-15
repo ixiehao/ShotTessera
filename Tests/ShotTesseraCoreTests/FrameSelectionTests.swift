@@ -2,6 +2,15 @@ import XCTest
 @testable import ShotTesseraApp
 
 final class FrameSelectionTests: XCTestCase {
+    @MainActor
+    func testBatchQueueAcceptsMultipleVideosAndRemovesDuplicates() {
+        let model = StoryboardViewModel()
+        let first = URL(fileURLWithPath: "/tmp/first.mp4")
+        let second = URL(fileURLWithPath: "/tmp/second.mp4")
+        model.addVideos([first, second, first])
+        XCTAssertEqual(model.videoJobs.map(\.url), [first, second])
+    }
+
     func testExportFilenameUsesShotSequence() {
         XCTAssertEqual(
             ExportDestination.filename(baseName: "concert", format: .png, sequence: 1),
@@ -83,7 +92,8 @@ final class FrameSelectionTests: XCTestCase {
             luminance: 0.45,
             blackRatio: blackRatio,
             sharpness: sharpness,
-            fingerprint: fingerprint
+            fingerprint: fingerprint,
+            previewData: nil
         )
     }
 }

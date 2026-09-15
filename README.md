@@ -10,6 +10,7 @@ It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `C
 - Prefers usable shots with a visible face or person; falls back gracefully for videos without people.
 - Rejects near-black, low-detail, and near-duplicate frames.
 - Creates 3×3 through 9×9 rounded-card storyboard grids.
+- Accepts multiple videos and processes the queue one video at a time, showing live tiles as each storyboard is assembled.
 - Creates a PNG or JPEG at 1920 px wide or larger, then automatically saves it beside the source video as `video-name-shot-001.ext` (the number increments safely).
 
 ShotTessera is an independent project. Its name, Tessera Iris icon, and interface are original; it is not affiliated with Apple, MoviePrint, or any video service.
@@ -30,7 +31,7 @@ The original **Tessera Iris** icon is an abstract viewfinder: nine rounded story
 1. Clone the repository.
 2. Open `Package.swift` in Xcode.
 3. Choose **ShotTessera** as the scheme and press Run.
-4. Drop an MP4, MOV, or other AVFoundation-supported video into the window.
+4. Choose or drop one or more MP4, MOV, or other AVFoundation-supported videos into the window. The queue runs sequentially, so several videos do not compete for decoder resources.
 
 To run the algorithm tests from Terminal:
 
@@ -49,7 +50,7 @@ Only process video you own or are authorised to analyse. ShotTessera does not gr
 
 ## Selection approach
 
-ShotTessera is intentionally lightweight. It rapidly samples compact frames for scene and quality analysis, runs Apple's on-device Vision people and face detectors only on a short, representative shortlist, then decodes only the selected frames at an export-appropriate size. It uses a strict de-duplication pass first, then fills sparse source material from distributed timestamps so a requested grid never has blank cards. It does not claim to make subjective editorial decisions about a film's best performance or story beat.
+ShotTessera is intentionally lightweight. It rapidly samples adaptive, export-appropriate JPEG frames for scene and quality analysis, runs Apple's on-device Vision people and face detectors only on a short, representative shortlist, and reuses those selected frames for both the live grid and final sheet—avoiding a second slow random-access decode pass. It uses a strict de-duplication pass first, then fills sparse source material from distributed timestamps so a requested grid never has blank cards. It does not claim to make subjective editorial decisions about a film's best performance or story beat.
 
 ## License
 

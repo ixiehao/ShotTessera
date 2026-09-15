@@ -19,13 +19,14 @@ for the user-facing promise.
 ```text
 video URL
   -> AVAssetImageGenerator samples a bounded set of frames
-  -> PixelMetrics makes a 48 x 48 luminance histogram, exposure/black score,
-     edge-detail score, and perceptual fingerprint
+  -> each adaptive-size analysis image is retained as a compact JPEG; PixelMetrics
+     makes a 48 x 48 luminance histogram, exposure/black score, edge-detail score,
+     and perceptual fingerprint
   -> FrameSelection finds histogram-based shot ranges, ranks a representative
      from each range, supplements short-cut videos by time bucket, and removes
      near duplicates
-  -> Vision scores only promising candidates for faces and full-body people
-  -> selected source frames are encoded and StoryboardComposer lays them out
+  -> Vision scores only promising JPEG candidates for faces and full-body people
+  -> selected JPEGs stream to the live grid, then StoryboardComposer lays them out
      as rounded 16:9 cards
   -> ImageIO writes the requested PNG or JPEG
 ```
@@ -69,5 +70,7 @@ used to fill every requested cell on sparse, long-shot source material.
   scene separation, duplicate rejection, and fallback behavior.
 - Keep exported images at or above 1920 px wide and test all grid sizes from
   3 x 3 to 9 x 9.
+- Keep batch processing sequential. Parallel video decoding can make the UI less
+  responsive and increases memory pressure without helping a single video finish.
 - If privacy-relevant behavior changes, update both this document and
   [PRIVACY.md](../PRIVACY.md) in the same change.

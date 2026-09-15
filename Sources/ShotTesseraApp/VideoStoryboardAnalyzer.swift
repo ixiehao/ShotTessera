@@ -5,17 +5,20 @@ import Foundation
 import Vision
 
 final class VideoStoryboardAnalyzer: @unchecked Sendable {
-    // Analysis works on small frames; only the final selected frames are decoded
-    // at an export-appropriate size. This keeps long and 4K videos responsive.
+    // The analysis thumbnail is also the storyboard source. Reusing it avoids a
+    // second random-access decode pass after selection, which is the slowest part
+    // of many H.264/HEVC files.
     private let maximumAnalysisSamples = 180
-    private let analysisMaximumEdge: CGFloat = 480
+    private let minimumAnalysisEdge: CGFloat = 480
+    private let maximumAnalysisEdge: CGFloat = 1280
     private let maximumVisionCandidates = 42
 
     func analyze(
         videoURL: URL,
         gridSide: Int,
         outputWidth: Int,
-        progress: @escaping @Sendable (Double) -> Void
+        progress: @escaping @Sendable (Double) -> Void,
+        onPreviewFrame: @escaping @Sendable (CapturedFrame, Int, Int) -> Void
     ) async throws -> StoryboardResult {
         let asset = AVURLAsset(url: videoURL)
         let duration = try await asset.load(.duration).seconds
@@ -24,7 +27,10 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         let targetCount = gridSide * gridSide
         let sampleCount = min(maximumAnalysisSamples, max(targetCount * 2, 72))
         let interval = max(0.22, duration / Double(sampleCount))
-        let analysisGenerator = imageGenerator(asset: asset, maximumEdge: analysisMaximumEdge)
+        let analysisGenerator = imageGenerator(
+            asset: asset,
+            maximumEdge: analysisMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
+        )
 
         var descriptors: [FrameDescriptor] = []
         var index = 0
@@ -35,6 +41,7 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
             guard let image = try? analysisGenerator.copyCGImage(at: CMTime(seconds: time, preferredTimescale: 600), actualTime: nil) else {
                 continue
             }
+            guard let previewData = jpegData(from: image) else { continue }
             let metrics = PixelMetrics.make(from: image)
             descriptors.append(FrameDescriptor(
                 id: index,
@@ -43,7 +50,8 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
                 luminance: metrics.luminance,
                 blackRatio: metrics.blackRatio,
                 sharpness: metrics.sharpness,
-                fingerprint: metrics.fingerprint
+                fingerprint: metrics.fingerprint,
+                previewData: previewData
             ))
             progress(0.05 + 0.53 * min(1, time / duration))
         }
@@ -60,7 +68,7 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         var scoreByID: [Int: Float] = [:]
         for (offset, candidate) in visionCandidates.enumerated() {
             try Task.checkCancellation()
-            guard let image = try? analysisGenerator.copyCGImage(at: CMTime(seconds: candidate.time, preferredTimescale: 600), actualTime: nil) else {
+            guard let image = cgImage(from: candidate.previewData) else {
                 continue
             }
             scoreByID[candidate.id] = peopleScore(in: visionPreview(from: image))
@@ -76,18 +84,18 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         let selected = FrameSelection.chooseFrames(from: descriptors, count: targetCount)
         guard !selected.isEmpty else { throw StoryboardError.noUsableFrames }
 
-        let captureGenerator = imageGenerator(
-            asset: asset,
-            maximumEdge: captureMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
-        )
         var captured: [CapturedFrame] = []
         for (offset, descriptor) in selected.enumerated() {
             try Task.checkCancellation()
-            guard let image = try? captureGenerator.copyCGImage(at: CMTime(seconds: descriptor.time, preferredTimescale: 600), actualTime: nil),
-                  let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.94])
-            else { continue }
-            captured.append(CapturedFrame(id: descriptor.id, time: descriptor.time, jpegData: data))
+            guard let data = descriptor.previewData else { continue }
+            let frame = CapturedFrame(id: descriptor.id, time: descriptor.time, jpegData: data)
+            captured.append(frame)
+            onPreviewFrame(frame, captured.count, selected.count)
             progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))
+            // Keep the preview visibly progressive without adding a perceptible
+            // wait: 0.7 seconds or less for a full grid.
+            let revealDelay = UInt64(max(12, min(45, 720 / max(1, selected.count)))) * 1_000_000
+            try await Task.sleep(nanoseconds: revealDelay)
         }
 
         guard !captured.isEmpty else { throw StoryboardError.noUsableFrames }
@@ -118,9 +126,19 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         return generator
     }
 
-    private func captureMaximumEdge(gridSide: Int, outputWidth: Int) -> CGFloat {
+    private func analysisMaximumEdge(gridSide: Int, outputWidth: Int) -> CGFloat {
         let estimatedCellWidth = Double(max(1920, outputWidth)) / Double(gridSide)
-        return CGFloat(min(4096, max(960, Int((estimatedCellWidth * 1.5).rounded(.up)))))
+        let desiredEdge = CGFloat(estimatedCellWidth * 1.15)
+        return min(maximumAnalysisEdge, max(minimumAnalysisEdge, desiredEdge))
+    }
+
+    private func jpegData(from image: CGImage) -> Data? {
+        NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.90])
+    }
+
+    private func cgImage(from data: Data?) -> CGImage? {
+        guard let data, let image = NSImage(data: data) else { return nil }
+        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
     private func peopleCandidates(from descriptors: [FrameDescriptor], count: Int) -> [FrameDescriptor] {

@@ -36,6 +36,34 @@ enum ExportDestination {
     }
 }
 
+enum VideoJobState: Equatable {
+    case queued
+    case processing
+    case completed(String)
+    case failed(String)
+
+    var label: String {
+        switch self {
+        case .queued: "等待处理"
+        case .processing: "处理中"
+        case .completed: "已保存"
+        case .failed: "失败"
+        }
+    }
+}
+
+struct VideoJob: Identifiable, Equatable {
+    let id: UUID
+    let url: URL
+    var state: VideoJobState
+
+    init(url: URL, state: VideoJobState = .queued) {
+        self.id = UUID()
+        self.url = url
+        self.state = state
+    }
+}
+
 struct FrameDescriptor: Identifiable, Sendable {
     let id: Int
     let time: Double
@@ -44,6 +72,7 @@ struct FrameDescriptor: Identifiable, Sendable {
     let blackRatio: Float
     let sharpness: Float
     let fingerprint: UInt64
+    let previewData: Data?
     var peopleScore: Float = 0
 
     var isUsable: Bool {
