@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import ShotTesseraApp
 
@@ -26,6 +27,37 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(TimestampFormatter.string(for: 0), "00:00:00")
         XCTAssertEqual(TimestampFormatter.string(for: 83.9), "00:01:23")
         XCTAssertEqual(TimestampFormatter.string(for: 3_723), "01:02:03")
+    }
+
+    func testEmptyWatermarkTitleIsNotRenderedAndWhitespaceIsTrimmed() {
+        var settings = ExportSettings()
+        XCTAssertNil(settings.visibleTitleWatermark)
+
+        settings.titleWatermark = "   \n "
+        XCTAssertNil(settings.visibleTitleWatermark)
+
+        settings.titleWatermark = "  夏日片段  "
+        XCTAssertEqual(settings.visibleTitleWatermark, "夏日片段")
+    }
+
+    func testComposerRendersAVisibleTitleWatermark() throws {
+        let sourceImage = NSImage(size: NSSize(width: 320, height: 180))
+        sourceImage.lockFocus()
+        NSColor(calibratedRed: 0.16, green: 0.34, blue: 0.58, alpha: 1).setFill()
+        NSBezierPath(rect: NSRect(x: 0, y: 0, width: 320, height: 180)).fill()
+        sourceImage.unlockFocus()
+        let imageData = try XCTUnwrap(sourceImage.tiffRepresentation)
+        let frames = (0..<9).map { index in
+            CapturedFrame(id: index, time: Double(index), jpegData: imageData)
+        }
+        let result = StoryboardResult(frames: frames, sourceURL: URL(fileURLWithPath: "/tmp/sample.mp4"))
+        let baseSettings = ExportSettings(gridSide: 3, format: .png, width: 1920)
+        let plainData = try StoryboardComposer.render(result: result, settings: baseSettings)
+        let titledData = try StoryboardComposer.render(
+            result: result,
+            settings: ExportSettings(gridSide: 3, format: .png, width: 1920, titleWatermark: "夏日片段")
+        )
+        XCTAssertNotEqual(plainData, titledData)
     }
 
     func testCommonVideoContainersAreAccepted() {

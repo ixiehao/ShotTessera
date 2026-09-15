@@ -97,6 +97,24 @@ struct ContentView: View {
                     .font(.system(size: 13, weight: .medium))
                     .toggleStyle(.switch)
                     .disabled(model.isProcessing)
+                Toggle("添加标题水印", isOn: $model.showTitleWatermark)
+                    .font(.system(size: 13, weight: .medium))
+                    .toggleStyle(.switch)
+                    .disabled(model.isProcessing)
+                if model.showTitleWatermark {
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("输入标题，例如：夏日片段", text: $model.watermarkTitle)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(model.isProcessing)
+                            .accessibilityLabel("水印标题")
+                        Text(model.watermarkTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                             ? "输入后会以居中半透明大字写入图片。"
+                             : "标题将居中半透明叠加在最终分镜图上。")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 Text("最低 1920 px；所有画面只在本机处理。")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -190,6 +208,8 @@ final class StoryboardViewModel: ObservableObject {
     @Published var format: ExportFormat = .png
     @Published var width = 2560
     @Published var showTimestamps = false
+    @Published var showTitleWatermark = false
+    @Published var watermarkTitle = ""
     @Published var previewImage: NSImage?
     @Published var livePreviewFrames: [NSImage] = []
     @Published private(set) var activeGridSide = 4
@@ -285,7 +305,8 @@ final class StoryboardViewModel: ObservableObject {
             gridSide: gridSide,
             format: format,
             width: width,
-            showTimestamps: showTimestamps
+            showTimestamps: showTimestamps,
+            titleWatermark: showTitleWatermark ? watermarkTitle : nil
         )
         let analyzer = VideoStoryboardAnalyzer()
         let bridge = UIStateBridge(model: self)

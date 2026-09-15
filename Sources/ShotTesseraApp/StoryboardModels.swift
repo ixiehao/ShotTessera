@@ -13,9 +13,20 @@ struct ExportSettings: Sendable {
     var format: ExportFormat = .png
     var width: Int = 2560
     var showTimestamps = false
+    /// `nil` means no title watermark. An empty field is treated the same way.
+    var titleWatermark: String? = nil
 
     var frameCount: Int { gridSide * gridSide }
     var safeWidth: Int { max(1920, min(width, 12_000)) }
+
+    var visibleTitleWatermark: String? {
+        guard let titleWatermark else { return nil }
+        let title = titleWatermark.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+        // Keep an accidental paste from obscuring the entire storyboard. The
+        // composer can still wrap a normal long title across multiple lines.
+        return String(title.prefix(72))
+    }
 }
 
 enum TimestampFormatter {

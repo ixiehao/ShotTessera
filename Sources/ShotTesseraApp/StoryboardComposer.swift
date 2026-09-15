@@ -45,6 +45,10 @@ enum StoryboardComposer {
             )
         }
 
+        if let title = settings.visibleTitleWatermark {
+            drawTitleWatermark(title, canvasSize: CGSize(width: width, height: height), context: context)
+        }
+
         guard let image = context.makeImage() else { throw StoryboardError.noExportData }
         let mutableData = NSMutableData()
         let type: CFString = settings.format == .png ? UTType.png.identifier as CFString : UTType.jpeg.identifier as CFString
@@ -114,6 +118,71 @@ enum StoryboardComposer {
         context.textMatrix = .identity
         context.textPosition = CGPoint(x: labelRect.minX + horizontalPadding, y: labelRect.minY + verticalPadding)
         CTLineDraw(line, context)
+        context.restoreGState()
+    }
+
+    private static func drawTitleWatermark(_ title: String, canvasSize: CGSize, context: CGContext) {
+        let fontSize = max(42, min(canvasSize.width * 0.065, canvasSize.height * 0.19))
+        let font = CTFontCreateWithName("SF Pro Rounded" as CFString, fontSize, nil)
+        var alignment = CTTextAlignment.center
+        var lineBreakMode = CTLineBreakMode.byCharWrapping
+        let paragraph = withUnsafePointer(to: &alignment) { alignmentPointer in
+            withUnsafePointer(to: &lineBreakMode) { lineBreakPointer in
+                var settings = [
+                    CTParagraphStyleSetting(
+                        spec: .alignment,
+                        valueSize: MemoryLayout<CTTextAlignment>.size,
+                        value: alignmentPointer
+                    ),
+                    CTParagraphStyleSetting(
+                        spec: .lineBreakMode,
+                        valueSize: MemoryLayout<CTLineBreakMode>.size,
+                        value: lineBreakPointer
+                    )
+                ]
+                return CTParagraphStyleCreate(&settings, settings.count)
+            }
+        }
+        let attributes: [CFString: Any] = [
+            kCTFontAttributeName: font,
+            kCTParagraphStyleAttributeName: paragraph,
+            // The dark shadow preserves legibility without turning the title
+            // into an opaque banner over the selected images.
+            kCTForegroundColorAttributeName: CGColor(red: 1, green: 1, blue: 1, alpha: 0.68)
+        ]
+        guard let string = CFAttributedStringCreate(nil, title as CFString, attributes as CFDictionary) else { return }
+        let framesetter = CTFramesetterCreateWithAttributedString(string)
+        let maximumWidth = canvasSize.width * 0.82
+        let maximumHeight = canvasSize.height * 0.38
+        let suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(location: 0, length: 0),
+            nil,
+            CGSize(width: maximumWidth, height: maximumHeight),
+            nil
+        )
+        let textHeight = min(maximumHeight, max(fontSize * 1.25, ceil(suggestedSize.height)))
+        let textRect = CGRect(
+            x: (canvasSize.width - maximumWidth) / 2,
+            y: (canvasSize.height - textHeight) / 2,
+            width: maximumWidth,
+            height: textHeight
+        )
+        let frame = CTFramesetterCreateFrame(
+            framesetter,
+            CFRange(location: 0, length: 0),
+            CGPath(rect: textRect, transform: nil),
+            nil
+        )
+
+        context.saveGState()
+        context.setShadow(
+            offset: CGSize(width: 0, height: -fontSize * 0.035),
+            blur: fontSize * 0.16,
+            color: CGColor(red: 0, green: 0, blue: 0.02, alpha: 0.72)
+        )
+        context.textMatrix = .identity
+        CTFrameDraw(frame, context)
         context.restoreGState()
     }
 
