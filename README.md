@@ -24,7 +24,7 @@ Requires an Apple Silicon or Intel Mac running macOS 13 or later. The app is ad-
 
 - Keeps the source video's portrait, square, or landscape composition by default; 16:9, 4:3, 1:1, 3:4, 9:16, and 21:9 are also available.
 - Shows live tiles as each storyboard is assembled and processes multi-video queues sequentially.
-- Supports common containers including MP4, MOV, M4V, AVI, MKV, WebM, 3GP/3G2, MPEG, TS/M2TS, WMV, and FLV (codec support depends on macOS).
+- Supports MP4, MOV, MPEG, and more (codec support depends on macOS).
 - Optionally adds timecodes and a large translucent title based on the video filename.
 - Switch the interface between 中文, English, and 日本語; the chosen language is remembered.
 - Saves as `video-name-shot-001.png` or `.jpg`, incrementing safely when needed.

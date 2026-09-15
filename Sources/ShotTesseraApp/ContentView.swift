@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var model = StoryboardViewModel()
     @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
     @State private var isLanguagePickerPresented = false
+    @State private var isAspectPickerPresented = false
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .chinese
@@ -99,12 +100,75 @@ struct ContentView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 7)
                         .background(choice == language ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .contentShape(Rectangle())
                 }
             }
             .padding(8)
             .frame(width: 156)
+        }
+    }
+
+    private var aspectSelector: some View {
+        Button {
+            isAspectPickerPresented.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Text(t("section.aspect"))
+                    .font(.system(size: 11, weight: .medium))
+                Spacer(minLength: 0)
+                Text(model.layoutAspect.label(in: language))
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.primary)
+            .compactOptionSurface()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(t("section.aspect"))
+        .disabled(model.isProcessing)
+        .popover(isPresented: $isAspectPickerPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(t("section.aspect"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 2)
+
+                ForEach(StoryboardAspect.allCases) { aspect in
+                    Button {
+                        model.layoutAspect = aspect
+                        isAspectPickerPresented = false
+                    } label: {
+                        HStack {
+                            Text(aspect.label(in: language))
+                            Spacer()
+                            if aspect == model.layoutAspect {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .background(aspect == model.layoutAspect ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .contentShape(Rectangle())
+                }
+            }
+            .padding(8)
+            .frame(width: 178)
         }
     }
 
@@ -148,19 +212,31 @@ struct ContentView: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 HStack {
-                    Label(t("section.aspect"), systemImage: "aspectratio")
+                    Label(t("section.frame"), systemImage: "rectangle.on.rectangle")
                         .font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Picker(t("section.aspect"), selection: $model.layoutAspect) {
-                        ForEach(StoryboardAspect.allCases) { aspect in
-                            Text(aspect.label(in: language)).tag(aspect)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .fixedSize()
-                    .disabled(model.isProcessing)
                 }
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible())],
+                    spacing: 8
+                ) {
+                    aspectSelector
+                    HStack(spacing: 4) {
+                        Text(t("export.width"))
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer(minLength: 0)
+                        Text(t("export.width.value", model.width))
+                            .font(.system(size: 11, weight: .medium))
+                            .monospacedDigit()
+                        Stepper("", value: $model.width, in: 1920...12_000, step: 160)
+                            .labelsHidden()
+                            .controlSize(.small)
+                            .accessibilityHint(t("export.width.hint"))
+                            .disabled(model.isProcessing)
+                    }
+                    .compactOptionSurface()
+                    .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity)
                 Text(t("aspect.help"))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
@@ -179,39 +255,28 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
                 .disabled(model.isProcessing)
-                HStack(spacing: 6) {
-                    Stepper(value: $model.width, in: 1920...12_000, step: 160) {
-                        Text(t("export.width", model.width))
-                            .monospacedDigit()
-                    }
-                    .font(.system(size: 11, weight: .medium))
-                    .accessibilityHint(t("export.width.hint"))
-                    .disabled(model.isProcessing)
-
-                    Divider().frame(height: 24)
-
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible())],
+                    spacing: 8
+                ) {
                     Toggle(t("export.time"), isOn: $model.showTimestamps)
                         .font(.system(size: 11, weight: .medium))
                         .toggleStyle(.switch)
-                        .fixedSize()
+                        .compactOptionSurface()
+                        .frame(maxWidth: .infinity)
                         .disabled(model.isProcessing)
-
-                    Divider().frame(height: 24)
 
                     Toggle(t("export.title"), isOn: $model.showTitleWatermark)
                         .font(.system(size: 11, weight: .medium))
                         .toggleStyle(.switch)
-                        .fixedSize()
+                        .compactOptionSurface()
+                        .frame(maxWidth: .infinity)
                         .disabled(model.isProcessing)
                 }
+                .frame(maxWidth: .infinity)
                 Text(t("export.local.note"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                if model.showTitleWatermark {
-                    Text(t("export.title.note"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
             }
 
             Spacer(minLength: 0)
@@ -826,5 +891,17 @@ private struct ExportButtonStyle: ButtonStyle {
             .foregroundStyle(.primary)
             .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.09), in: Capsule())
             .overlay { Capsule().strokeBorder(.white.opacity(0.15)) }
+    }
+}
+
+private extension View {
+    func compactOptionSurface() -> some View {
+        padding(.horizontal, 9)
+            .frame(height: 34)
+            .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(.white.opacity(0.08))
+            }
     }
 }
