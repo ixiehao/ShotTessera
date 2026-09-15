@@ -6,6 +6,14 @@
 
 It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `CoreGraphics`, and `ImageIO`): no Electron, FFmpeg, Python runtime, analytics, network requests, or cloud upload.
 
+## From video to contact sheet, at a glance
+
+![ShotTessera flow: video frames become a contact sheet and then an exported image](docs/assets/video-to-storyboard-overview.png)
+
+| 1. Add video | 2. Select useful frames | 3. Build the sheet | 4. Export locally |
+| --- | --- | --- | --- |
+| Drop one video or queue several. | Detect cuts; avoid black, blurry, and duplicate frames; prefer people when present. | Preview each tile as it arrives in a 3×3 to 8×8 storyboard grid. | Save a 1920 px+ PNG or JPEG next to the source video. |
+
 ## What it does
 
 - Detects visual shot changes and selects a representative frame for each scene.
