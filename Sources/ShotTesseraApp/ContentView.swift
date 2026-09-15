@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = StoryboardViewModel()
+    @FocusState private var watermarkTitleIsFocused: Bool
 
     var body: some View {
         ZStack {
@@ -31,7 +32,7 @@ struct ContentView: View {
     }
 
     private var controlPanel: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
                 ShotTesseraMark()
                 VStack(alignment: .leading, spacing: 2) {
@@ -53,7 +54,7 @@ struct ContentView: View {
                 Label("分镜网格", systemImage: "square.grid.3x3.fill")
                     .font(.system(size: 13, weight: .semibold))
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
-                    ForEach(3...9, id: \.self) { side in
+                    ForEach(StoryboardGrid.availableSides, id: \.self) { side in
                         Button {
                             model.gridSide = side
                         } label: {
@@ -68,7 +69,7 @@ struct ContentView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 Label("导出", systemImage: "arrow.down.to.line.compact")
                     .font(.system(size: 13, weight: .semibold))
                 Text("自动保存到视频同目录：视频名-shot-001；数字自动递增。")
@@ -81,39 +82,61 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
                 .disabled(model.isProcessing)
-                Stepper(value: $model.width, in: 1920...12_000, step: 160) {
-                    HStack {
-                        Text("图像宽度")
-                        Spacer()
-                        Text("\(model.width) px")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Stepper(value: $model.width, in: 1920...12_000, step: 160) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("图像宽度")
+                            Text("\(model.width) px")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .font(.system(size: 12, weight: .medium))
+                    .accessibilityHint("输出图片宽度最低为 1920 像素")
+                    .disabled(model.isProcessing)
+
+                    Divider().frame(height: 30)
+
+                    Toggle("显示时间", isOn: $model.showTimestamps)
+                        .font(.system(size: 12, weight: .medium))
+                        .toggleStyle(.switch)
+                        .fixedSize()
+                        .disabled(model.isProcessing)
                 }
-                .font(.system(size: 13, weight: .medium))
-                .accessibilityHint("输出图片宽度最低为 1920 像素")
-                .disabled(model.isProcessing)
-                Toggle("显示时间", isOn: $model.showTimestamps)
-                    .font(.system(size: 13, weight: .medium))
-                    .toggleStyle(.switch)
-                    .disabled(model.isProcessing)
-                Toggle("添加标题水印", isOn: $model.showTitleWatermark)
-                    .font(.system(size: 13, weight: .medium))
-                    .toggleStyle(.switch)
-                    .disabled(model.isProcessing)
-                if model.showTitleWatermark {
-                    VStack(alignment: .leading, spacing: 6) {
-                        TextField("输入标题，例如：夏日片段", text: $model.watermarkTitle)
-                            .textFieldStyle(.roundedBorder)
+
+                HStack(spacing: 9) {
+                    Toggle("标题水印", isOn: $model.showTitleWatermark)
+                        .font(.system(size: 12, weight: .medium))
+                        .toggleStyle(.switch)
+                        .fixedSize()
+                        .disabled(model.isProcessing)
+                        .onChange(of: model.showTitleWatermark) { isEnabled in
+                            guard isEnabled else {
+                                watermarkTitleIsFocused = false
+                                return
+                            }
+                            DispatchQueue.main.async { watermarkTitleIsFocused = true }
+                        }
+
+                    if model.showTitleWatermark {
+                        TextField("输入标题", text: $model.watermarkTitle)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white)
+                            .tint(Color(red: 0.42, green: 0.85, blue: 0.91))
+                            .focused($watermarkTitleIsFocused)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.24))
+                            }
                             .disabled(model.isProcessing)
                             .accessibilityLabel("水印标题")
-                        Text(model.watermarkTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                             ? "输入后会以居中半透明大字写入图片。"
-                             : "标题将居中半透明叠加在最终分镜图上。")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                            .accessibilityHint("输入后会以居中半透明大字写入图片")
+                            .transition(.opacity.combined(with: .move(edge: .trailing)))
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
                 Text("最低 1920 px；所有画面只在本机处理。")
                     .font(.system(size: 11))

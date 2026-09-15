@@ -94,7 +94,7 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(Set(selected.map(\.id)).count, selected.count)
     }
 
-    func testSelectionFillsARequestedNineByNineGrid() {
+    func testSelectionFillsARequestedEightByEightGrid() {
         let frames = (0..<180).map { index in
             frame(
                 id: index,
@@ -103,9 +103,13 @@ final class FrameSelectionTests: XCTestCase {
                 fingerprint: UInt64(index) << 16
             )
         }
-        let selected = FrameSelection.chooseFrames(from: frames, count: 81)
-        XCTAssertEqual(selected.count, 81)
-        XCTAssertEqual(Set(selected.map(\.id)).count, 81)
+        let selected = FrameSelection.chooseFrames(from: frames, count: 64)
+        XCTAssertEqual(selected.count, 64)
+        XCTAssertEqual(Set(selected.map(\.id)).count, 64)
+    }
+
+    func testGridChoicesStopAtEightByEight() {
+        XCTAssertEqual(StoryboardGrid.availableSides, [3, 4, 5, 6, 7, 8])
     }
 
     func testAllBlackFramesProduceNoStoryboardCandidates() {

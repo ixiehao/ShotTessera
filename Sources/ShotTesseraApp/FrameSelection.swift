@@ -75,7 +75,7 @@ enum FrameSelection {
             }
         }
 
-        // A requested 9×9 sheet must never render empty cells just because a video
+        // A requested sheet must never render empty cells just because a video
         // contains a single long shot. Fill remaining slots from evenly distributed
         // time buckets, relaxing only visual-duplication rules—not black/blur checks.
         if unique.count < count {

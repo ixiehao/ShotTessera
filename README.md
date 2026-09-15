@@ -9,7 +9,7 @@ It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `C
 - Detects visual shot changes and selects a representative frame for each scene.
 - Prefers usable shots with a visible face or person; falls back gracefully for videos without people.
 - Rejects near-black, low-detail, and near-duplicate frames.
-- Creates 3×3 through 9×9 rounded-card storyboard grids.
+- Creates 3×3 through 8×8 rounded-card storyboard grids.
 - Accepts multiple videos and processes the queue one video at a time, showing live tiles as each storyboard is assembled.
 - Lets you choose MP4, MOV, M4V, AVI, MKV, WebM, 3GP/3G2, MPEG, TS/M2TS, WMV, FLV, and related common containers.
 - Creates a PNG or JPEG at 1920 px wide or larger, then automatically saves it beside the source video as `video-name-shot-001.ext` (the number increments safely).

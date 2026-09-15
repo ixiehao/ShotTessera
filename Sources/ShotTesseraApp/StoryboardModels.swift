@@ -8,6 +8,11 @@ enum ExportFormat: String, CaseIterable, Identifiable, Sendable {
     var fileExtension: String { self == .png ? "png" : "jpg" }
 }
 
+enum StoryboardGrid {
+    /// Six options keep the controls to two compact rows.
+    static let availableSides = Array(3...8)
+}
+
 struct ExportSettings: Sendable {
     var gridSide: Int = 4
     var format: ExportFormat = .png

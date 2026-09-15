@@ -31,7 +31,7 @@ video URL
   -> ImageIO writes the requested PNG or JPEG
 ```
 
-`ExportSettings` constrains the grid to the UI's 3 x 3 through 9 x 9 choices
+`ExportSettings` constrains the grid to the UI's 3 x 3 through 8 x 8 choices
 and clamps exported width to at least 1920 px. Rendering uses CoreGraphics, so
 the final image is composed in memory without an intermediate image editor.
 
@@ -69,7 +69,7 @@ used to fill every requested cell on sparse, long-shot source material.
 - Changes to selection thresholds should include deterministic unit tests for
   scene separation, duplicate rejection, and fallback behavior.
 - Keep exported images at or above 1920 px wide and test all grid sizes from
-  3 x 3 to 9 x 9.
+  3 x 3 to 8 x 8.
 - Keep batch processing sequential. Parallel video decoding can make the UI less
   responsive and increases memory pressure without helping a single video finish.
 - If privacy-relevant behavior changes, update both this document and
