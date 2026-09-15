@@ -2,7 +2,7 @@
 
 ShotTessera is a small, native macOS app that turns a video into one clean storyboard image. Its name joins **shot** with **tessera**, a small tile in a mosaic: selected video shots arranged into one visual whole.
 
-It uses only Apple frameworks (`SwiftUI`, `AVFoundation`, `Vision`, `CoreGraphics`, and `CoreImage`): no Electron, FFmpeg, Python runtime, analytics, network requests, or cloud upload.
+It uses only Apple frameworks (`SwiftUI`, `AppKit`, `AVFoundation`, `Vision`, `CoreGraphics`, and `ImageIO`): no Electron, FFmpeg, Python runtime, analytics, network requests, or cloud upload.
 
 ## What it does
 
@@ -10,9 +10,9 @@ It uses only Apple frameworks (`SwiftUI`, `AVFoundation`, `Vision`, `CoreGraphic
 - Prefers usable shots with a visible face or person; falls back gracefully for videos without people.
 - Rejects near-black, low-detail, and near-duplicate frames.
 - Creates 3×3 through 9×9 rounded-card storyboard grids.
-- Exports PNG or JPEG at 1920 px wide or larger.
+- Creates a PNG or JPEG at 1920 px wide or larger, then automatically saves it beside the source video as `video-name-shot-001.ext` (the number increments safely).
 
-ShotTessera is an independent project. Its name, three-bar mark, and interface are original; it is not affiliated with Apple, MoviePrint, or any video service.
+ShotTessera is an independent project. Its name, Tessera Iris icon, and interface are original; it is not affiliated with Apple, MoviePrint, or any video service.
 
 ## App icon
 
@@ -49,7 +49,7 @@ Only process video you own or are authorised to analyse. ShotTessera does not gr
 
 ## Selection approach
 
-ShotTessera is intentionally lightweight. It identifies scene boundaries from compact luminance histograms, assesses exposure/sharpness/duplication from small pixel buffers, and uses Apple's on-device Vision people and face detectors as a preference signal. It uses a strict de-duplication pass first, then fills sparse source material from distributed timestamps so a requested grid never has blank cards. It does not claim to make subjective editorial decisions about a film's best performance or story beat.
+ShotTessera is intentionally lightweight. It rapidly samples compact frames for scene and quality analysis, runs Apple's on-device Vision people and face detectors only on a short, representative shortlist, then decodes only the selected frames at an export-appropriate size. It uses a strict de-duplication pass first, then fills sparse source material from distributed timestamps so a requested grid never has blank cards. It does not claim to make subjective editorial decisions about a film's best performance or story beat.
 
 ## License
 

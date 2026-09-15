@@ -68,6 +68,9 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label("导出", systemImage: "arrow.down.to.line.compact")
                     .font(.system(size: 13, weight: .semibold))
+                Text("自动保存到视频同目录：视频名-shot-001；数字自动递增。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
                 Picker("格式", selection: $model.format) {
                     ForEach(ExportFormat.allCases) { format in
                         Text(format.rawValue).tag(format)
@@ -95,7 +98,7 @@ struct ContentView: View {
                 HStack(spacing: 9) {
                     if model.isProcessing { ProgressView().controlSize(.small) }
                     Image(systemName: model.isProcessing ? "wand.and.stars.inverse" : "wand.and.stars")
-                    Text(model.isProcessing ? "正在挑选画面…" : "一键生成分镜图")
+                    Text(model.isProcessing ? model.processingLabel : "一键生成分镜图")
                 }
                 .font(.system(size: 15, weight: .bold))
                 .frame(maxWidth: .infinity)
@@ -146,7 +149,7 @@ struct ContentView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .shadow(color: .black.opacity(0.28), radius: 24, y: 12)
                         Button(action: model.exportCurrentResult) {
-                            Label("导出 \((model.renderedFormat ?? model.format).rawValue)", systemImage: "square.and.arrow.down")
+                            Label("另存为 \((model.renderedFormat ?? model.format).rawValue)", systemImage: "square.and.arrow.down")
                                 .font(.system(size: 14, weight: .bold))
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 10)
@@ -187,6 +190,14 @@ final class StoryboardViewModel: ObservableObject {
     private var pendingSource: URL?
     private var pendingFormat: ExportFormat?
 
+    var processingLabel: String {
+        switch progress {
+        case ..<0.58: "正在快速浏览画面…"
+        case ..<0.72: "正在优选人物镜头…"
+        default: "正在生成高清分镜图…"
+        }
+    }
+
     func chooseVideo() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.movie]
@@ -215,11 +226,15 @@ final class StoryboardViewModel: ObservableObject {
 
         let task = Task.detached(priority: .userInitiated) {
             do {
-                let result = try await analyzer.analyze(videoURL: videoURL, gridSide: settings.gridSide) { value in
+                let result = try await analyzer.analyze(
+                    videoURL: videoURL,
+                    gridSide: settings.gridSide,
+                    outputWidth: settings.safeWidth
+                ) { value in
                     bridge.report(progress: value)
                 }
                 let data = try StoryboardComposer.render(result: result, settings: settings)
-                bridge.finish(data: data, source: videoURL, format: settings.format)
+                bridge.finish(data: data, source: videoURL, settings: settings)
             } catch {
                 bridge.fail(with: error.localizedDescription, wasCancelled: error is CancellationError)
             }
@@ -234,15 +249,23 @@ final class StoryboardViewModel: ObservableObject {
         outputDescription = "已取消生成。"
     }
 
-    func complete(data: Data, source: URL, format: ExportFormat) {
+    func complete(data: Data, source: URL, settings: ExportSettings) {
         previewImage = NSImage(data: data)
         pendingData = data
         pendingSource = source
-        pendingFormat = format
-        renderedFormat = format
+        pendingFormat = settings.format
+        renderedFormat = settings.format
         isProcessing = false
         generationTask = nil
-        outputDescription = "已生成 \(gridSide) × \(gridSide) 分镜图，宽度 \(max(1920, width)) px。"
+        do {
+            let destination = ExportDestination.nextURL(for: source, format: settings.format)
+            try data.write(to: destination, options: .atomic)
+            outputDescription = "已生成 \(settings.gridSide) × \(settings.gridSide) 分镜图，已保存为 \(destination.lastPathComponent)。"
+        } catch {
+            outputDescription = "已生成 \(settings.gridSide) × \(settings.gridSide) 分镜图，但未能自动保存。"
+            errorMessage = error.localizedDescription
+            showError = true
+        }
     }
 
     func exportCurrentResult() {
@@ -253,7 +276,8 @@ final class StoryboardViewModel: ObservableObject {
     func save(data: Data, source: URL, format: ExportFormat) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [format == .png ? .png : .jpeg]
-        panel.nameFieldStringValue = "\(source.deletingPathExtension().lastPathComponent)-shottessera.\(format.fileExtension)"
+        panel.directoryURL = source.deletingLastPathComponent()
+        panel.nameFieldStringValue = ExportDestination.nextURL(for: source, format: format).lastPathComponent
         panel.begin { response in
             guard response == .OK, let destination = panel.url else { return }
             do { try data.write(to: destination, options: .atomic) }
@@ -276,11 +300,11 @@ private final class UIStateBridge: @unchecked Sendable {
         Task { @MainActor [weak self] in self?.model?.progress = progress }
     }
 
-    func finish(data: Data, source: URL, format: ExportFormat) {
+    func finish(data: Data, source: URL, settings: ExportSettings) {
         Task { @MainActor [weak self] in
             guard let model = self?.model else { return }
             model.progress = 1
-            model.complete(data: data, source: source, format: format)
+            model.complete(data: data, source: source, settings: settings)
         }
     }
 
@@ -301,18 +325,30 @@ private final class UIStateBridge: @unchecked Sendable {
 
 private struct ShotTesseraMark: View {
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(LinearGradient(colors: [Color(red: 0.28, green: 0.82, blue: 0.86), Color(red: 0.60, green: 0.46, blue: 0.96)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            HStack(spacing: 3) {
-                Capsule().frame(width: 5, height: 19)
-                Capsule().frame(width: 5, height: 12)
-                Capsule().frame(width: 5, height: 19)
+        Group {
+            if let image = ShotTesseraIconAsset.image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .accessibilityLabel("ShotTessera 拼片之眼图标")
+            } else {
+                Image(systemName: "eye")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.indigo, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .foregroundStyle(.white.opacity(0.94))
         }
         .frame(width: 44, height: 44)
     }
+}
+
+private enum ShotTesseraIconAsset {
+    static let image: NSImage? = {
+        guard let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png") else { return nil }
+        return NSImage(contentsOf: url)
+    }()
 }
 
 private struct VideoDropCard: View {

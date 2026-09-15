@@ -2,6 +2,17 @@ import XCTest
 @testable import ShotTesseraApp
 
 final class FrameSelectionTests: XCTestCase {
+    func testExportFilenameUsesShotSequence() {
+        XCTAssertEqual(
+            ExportDestination.filename(baseName: "concert", format: .png, sequence: 1),
+            "concert-shot-001.png"
+        )
+        XCTAssertEqual(
+            ExportDestination.filename(baseName: "concert", format: .jpeg, sequence: 42),
+            "concert-shot-042.jpg"
+        )
+    }
+
     func testHistogramDistanceIsZeroForSameFrame() {
         XCTAssertEqual(FrameSelection.histogramDistance([0.5, 0.5], [0.5, 0.5]), 0, accuracy: 0.0001)
     }

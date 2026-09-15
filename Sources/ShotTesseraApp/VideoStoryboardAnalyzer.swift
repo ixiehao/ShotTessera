@@ -5,11 +5,16 @@ import Foundation
 import Vision
 
 final class VideoStoryboardAnalyzer: @unchecked Sendable {
-    private let maximumSamples = 540
+    // Analysis works on small frames; only the final selected frames are decoded
+    // at an export-appropriate size. This keeps long and 4K videos responsive.
+    private let maximumAnalysisSamples = 180
+    private let analysisMaximumEdge: CGFloat = 480
+    private let maximumVisionCandidates = 42
 
     func analyze(
         videoURL: URL,
         gridSide: Int,
+        outputWidth: Int,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> StoryboardResult {
         let asset = AVURLAsset(url: videoURL)
@@ -17,12 +22,9 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         guard duration.isFinite, duration > 0 else { throw StoryboardError.unreadableVideo }
 
         let targetCount = gridSide * gridSide
-        let sampleCount = min(maximumSamples, max(targetCount * 5, 90))
+        let sampleCount = min(maximumAnalysisSamples, max(targetCount * 2, 72))
         let interval = max(0.22, duration / Double(sampleCount))
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 30)
-        generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 30)
+        let analysisGenerator = imageGenerator(asset: asset, maximumEdge: analysisMaximumEdge)
 
         var descriptors: [FrameDescriptor] = []
         var index = 0
@@ -30,7 +32,7 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         while time < duration {
             try Task.checkCancellation()
             defer { time += interval; index += 1 }
-            guard let image = try? generator.copyCGImage(at: CMTime(seconds: time, preferredTimescale: 600), actualTime: nil) else {
+            guard let image = try? analysisGenerator.copyCGImage(at: CMTime(seconds: time, preferredTimescale: 600), actualTime: nil) else {
                 continue
             }
             let metrics = PixelMetrics.make(from: image)
@@ -43,42 +45,49 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
                 sharpness: metrics.sharpness,
                 fingerprint: metrics.fingerprint
             ))
-            progress(0.08 + 0.47 * min(1, time / duration))
+            progress(0.05 + 0.53 * min(1, time / duration))
         }
 
         guard !descriptors.isEmpty else { throw StoryboardError.unreadableVideo }
 
-        // Score a timeline-distributed set rather than only sharp landscape shots,
-        // so a dimmer but meaningful close-up still has an opportunity to win.
-        let visionSampleCount = min(descriptors.count, max(180, targetCount * 4))
-        let visionCandidates = FrameSelection.evenlySpaced(descriptors, count: visionSampleCount)
+        // Vision is comparatively expensive. Score a compact blend of distributed
+        // and high-quality candidates instead of inspecting the entire timeline.
+        let visionSampleCount = min(
+            descriptors.count,
+            min(maximumVisionCandidates, max(18, targetCount / 2))
+        )
+        let visionCandidates = peopleCandidates(from: descriptors, count: visionSampleCount)
         var scoreByID: [Int: Float] = [:]
         for (offset, candidate) in visionCandidates.enumerated() {
             try Task.checkCancellation()
-            guard let image = try? generator.copyCGImage(at: CMTime(seconds: candidate.time, preferredTimescale: 600), actualTime: nil) else {
+            guard let image = try? analysisGenerator.copyCGImage(at: CMTime(seconds: candidate.time, preferredTimescale: 600), actualTime: nil) else {
                 continue
             }
             scoreByID[candidate.id] = peopleScore(in: visionPreview(from: image))
-            progress(0.55 + 0.09 * Double(offset + 1) / Double(visionCandidates.count))
+            progress(0.58 + 0.14 * Double(offset + 1) / Double(visionCandidates.count))
         }
         descriptors = descriptors.map { descriptor in
             var updated = descriptor
             updated.peopleScore = scoreByID[descriptor.id] ?? 0
             return updated
         }
-        progress(0.62)
+        progress(0.72)
 
         let selected = FrameSelection.chooseFrames(from: descriptors, count: targetCount)
         guard !selected.isEmpty else { throw StoryboardError.noUsableFrames }
 
+        let captureGenerator = imageGenerator(
+            asset: asset,
+            maximumEdge: captureMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
+        )
         var captured: [CapturedFrame] = []
         for (offset, descriptor) in selected.enumerated() {
             try Task.checkCancellation()
-            guard let image = try? generator.copyCGImage(at: CMTime(seconds: descriptor.time, preferredTimescale: 600), actualTime: nil),
+            guard let image = try? captureGenerator.copyCGImage(at: CMTime(seconds: descriptor.time, preferredTimescale: 600), actualTime: nil),
                   let data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.94])
             else { continue }
             captured.append(CapturedFrame(id: descriptor.id, time: descriptor.time, jpegData: data))
-            progress(0.64 + 0.31 * Double(offset + 1) / Double(selected.count))
+            progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))
         }
 
         guard !captured.isEmpty else { throw StoryboardError.noUsableFrames }
@@ -95,6 +104,38 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         }
         progress(1)
         return StoryboardResult(frames: captured, sourceURL: videoURL)
+    }
+
+    private func imageGenerator(asset: AVAsset, maximumEdge: CGFloat) -> AVAssetImageGenerator {
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: maximumEdge, height: maximumEdge)
+        // A small keyframe tolerance avoids expensive exact-frame seeks during
+        // analysis, without noticeably changing a representative storyboard shot.
+        let tolerance = CMTime(seconds: 0.75, preferredTimescale: 600)
+        generator.requestedTimeToleranceBefore = tolerance
+        generator.requestedTimeToleranceAfter = tolerance
+        return generator
+    }
+
+    private func captureMaximumEdge(gridSide: Int, outputWidth: Int) -> CGFloat {
+        let estimatedCellWidth = Double(max(1920, outputWidth)) / Double(gridSide)
+        return CGFloat(min(4096, max(960, Int((estimatedCellWidth * 1.5).rounded(.up)))))
+    }
+
+    private func peopleCandidates(from descriptors: [FrameDescriptor], count: Int) -> [FrameDescriptor] {
+        let usable = descriptors.filter(\.isUsable)
+        guard !usable.isEmpty, count > 0 else { return [] }
+        let distributed = FrameSelection.evenlySpaced(usable, count: max(1, count / 2))
+        let visualLeaders = usable.sorted { $0.qualityScore > $1.qualityScore }
+        var seen = Set<Int>()
+        var candidates: [FrameDescriptor] = []
+        for candidate in distributed + visualLeaders where candidates.count < count {
+            if seen.insert(candidate.id).inserted {
+                candidates.append(candidate)
+            }
+        }
+        return candidates
     }
 
     private func peopleScore(in image: CGImage) -> Float {

@@ -17,6 +17,25 @@ struct ExportSettings: Sendable {
     var safeWidth: Int { max(1920, min(width, 12_000)) }
 }
 
+enum ExportDestination {
+    static func filename(baseName: String, format: ExportFormat, sequence: Int) -> String {
+        let safeBaseName = baseName.isEmpty ? "video" : baseName
+        let suffix = String(format: "%03d", max(1, sequence))
+        return "\(safeBaseName)-shot-\(suffix).\(format.fileExtension)"
+    }
+
+    static func nextURL(for source: URL, format: ExportFormat, fileManager: FileManager = .default) -> URL {
+        let folder = source.deletingLastPathComponent()
+        let baseName = source.deletingPathExtension().lastPathComponent
+        var sequence = 1
+        while true {
+            let candidate = folder.appendingPathComponent(filename(baseName: baseName, format: format, sequence: sequence))
+            if !fileManager.fileExists(atPath: candidate.path) { return candidate }
+            sequence += 1
+        }
+    }
+}
+
 struct FrameDescriptor: Identifiable, Sendable {
     let id: Int
     let time: Double
