@@ -1,0 +1,68 @@
+import Foundation
+
+enum ExportFormat: String, CaseIterable, Identifiable, Sendable {
+    case png = "PNG"
+    case jpeg = "JPG"
+
+    var id: String { rawValue }
+    var fileExtension: String { self == .png ? "png" : "jpg" }
+}
+
+struct ExportSettings: Sendable {
+    var gridSide: Int = 4
+    var format: ExportFormat = .png
+    var width: Int = 2560
+
+    var frameCount: Int { gridSide * gridSide }
+    var safeWidth: Int { max(1920, min(width, 12_000)) }
+}
+
+struct FrameDescriptor: Identifiable, Sendable {
+    let id: Int
+    let time: Double
+    let histogram: [Float]
+    let luminance: Float
+    let blackRatio: Float
+    let sharpness: Float
+    let fingerprint: UInt64
+    var peopleScore: Float = 0
+
+    var isUsable: Bool {
+        blackRatio < 0.82 && luminance > 0.045 && sharpness > 0.012
+    }
+
+    var qualityScore: Float {
+        let exposure = min(1, max(0, (luminance - 0.08) / 0.40))
+        let detail = min(1, sharpness / 0.18)
+        let darknessPenalty = blackRatio * 1.4
+        // A detected face or full body is a deliberate preference, not merely a
+        // tie-breaker. Videos with no detected people still rank by visual quality.
+        let personPreference: Float = peopleScore > 0.05 ? 0.45 + peopleScore * 0.60 : 0
+        return max(0, exposure * 0.35 + detail * 0.55 + personPreference - darknessPenalty)
+    }
+}
+
+struct CapturedFrame: Sendable, Identifiable {
+    let id: Int
+    let time: Double
+    let jpegData: Data
+}
+
+struct StoryboardResult: Sendable {
+    let frames: [CapturedFrame]
+    let sourceURL: URL
+}
+
+enum StoryboardError: LocalizedError {
+    case unreadableVideo
+    case noUsableFrames
+    case noExportData
+
+    var errorDescription: String? {
+        switch self {
+        case .unreadableVideo: "无法读取此视频。请尝试 MP4 或 MOV 文件。"
+        case .noUsableFrames: "没有找到足够清晰、明亮的画面。"
+        case .noExportData: "无法生成导出图片。"
+        }
+    }
+}
