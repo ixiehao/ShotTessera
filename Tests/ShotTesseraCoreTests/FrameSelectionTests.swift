@@ -65,6 +65,39 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertNotEqual(plainData, titledData)
     }
 
+    func testStoryboardAspectUsesTheSourceForPortraitAndSupportsCommonOverrides() {
+        let portraitFrame = CapturedFrame(
+            id: 0,
+            time: 0,
+            jpegData: Data(),
+            aspectRatio: 9.0 / 16.0
+        )
+        let result = StoryboardResult(
+            frames: [portraitFrame],
+            sourceURL: URL(fileURLWithPath: "/tmp/vertical.mp4")
+        )
+
+        var settings = ExportSettings(gridSide: 3, width: 1920)
+        let automaticSize = StoryboardComposer.canvasSize(result: result, settings: settings)
+        XCTAssertGreaterThan(automaticSize.height, automaticSize.width)
+
+        settings.layoutAspect = .square
+        let squareSize = StoryboardComposer.canvasSize(result: result, settings: settings)
+        XCTAssertEqual(squareSize.height, squareSize.width, accuracy: 4)
+
+        settings.layoutAspect = .ultraWide
+        let ultraWideSize = StoryboardComposer.canvasSize(result: result, settings: settings)
+        XCTAssertGreaterThan(ultraWideSize.width, ultraWideSize.height * 2)
+    }
+
+    func testAspectChoicesCoverLandscapeSquareAndVerticalVideo() {
+        XCTAssertEqual(StoryboardAspect.source.resolvedCardAspectRatio(sourceAspectRatio: 9.0 / 16.0), 9.0 / 16.0)
+        XCTAssertEqual(StoryboardAspect.square.resolvedCardAspectRatio(sourceAspectRatio: nil), 1)
+        XCTAssertEqual(StoryboardAspect.landscape.resolvedCardAspectRatio(sourceAspectRatio: nil), 16.0 / 9.0)
+        XCTAssertEqual(StoryboardAspect.portrait.resolvedCardAspectRatio(sourceAspectRatio: nil), 9.0 / 16.0)
+        XCTAssertEqual(StoryboardAspect.ultraWide.resolvedCardAspectRatio(sourceAspectRatio: nil), 21.0 / 9.0)
+    }
+
     func testCommonVideoContainersAreAccepted() {
         for fileExtension in ["mp4", "mov", "mkv", "webm", "avi", "3gp", "mpeg", "ts"] {
             XCTAssertTrue(SupportedVideoInput.accepts(URL(fileURLWithPath: "/tmp/sample.\(fileExtension)")))

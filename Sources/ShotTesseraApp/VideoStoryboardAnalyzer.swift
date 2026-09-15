@@ -46,7 +46,7 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
             }
             guard let previewData = jpegData(from: image) else { continue }
             let metrics = PixelMetrics.make(from: image)
-            descriptors.append(FrameDescriptor(
+            var descriptor = FrameDescriptor(
                 id: index,
                 time: time,
                 histogram: metrics.histogram,
@@ -55,7 +55,9 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
                 sharpness: metrics.sharpness,
                 fingerprint: metrics.fingerprint,
                 previewData: previewData
-            ))
+            )
+            descriptor.aspectRatio = image.height > 0 ? Double(image.width) / Double(image.height) : (16.0 / 9.0)
+            descriptors.append(descriptor)
             progress(0.05 + 0.53 * min(1, time / duration))
         }
 
@@ -91,7 +93,12 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         for (offset, descriptor) in selected.enumerated() {
             try Task.checkCancellation()
             guard let data = descriptor.previewData else { continue }
-            let frame = CapturedFrame(id: descriptor.id, time: descriptor.time, jpegData: data)
+            let frame = CapturedFrame(
+                id: descriptor.id,
+                time: descriptor.time,
+                jpegData: data,
+                aspectRatio: descriptor.aspectRatio
+            )
             captured.append(frame)
             onPreviewFrame(frame, captured.count, selected.count)
             progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))

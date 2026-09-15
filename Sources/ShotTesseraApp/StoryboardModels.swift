@@ -13,8 +13,45 @@ enum StoryboardGrid {
     static let availableSides = Array(3...8)
 }
 
+/// The card ratio also determines the exported contact-sheet direction because
+/// every supported storyboard grid has the same number of rows and columns.
+/// `source` is deliberately the default: it preserves a vertical, square, or
+/// horizontal video's composition instead of forcing every frame into 16:9.
+enum StoryboardAspect: String, CaseIterable, Identifiable, Sendable {
+    case source = "随视频（自动）"
+    case landscape = "横屏 16:9"
+    case standard = "经典 4:3"
+    case square = "方形 1:1"
+    case vertical = "竖屏 3:4"
+    case portrait = "竖屏 9:16"
+    case ultraWide = "超宽 21:9"
+
+    var id: Self { self }
+
+    private var fixedCardAspectRatio: Double? {
+        switch self {
+        case .source: nil
+        case .landscape: 16.0 / 9.0
+        case .standard: 4.0 / 3.0
+        case .square: 1
+        case .vertical: 3.0 / 4.0
+        case .portrait: 9.0 / 16.0
+        case .ultraWide: 21.0 / 9.0
+        }
+    }
+
+    /// A guard rail for damaged metadata and unusually shaped image decodes.
+    /// It still accommodates all common phone, square, film, and ultrawide ratios.
+    func resolvedCardAspectRatio(sourceAspectRatio: Double?) -> Double {
+        let candidate = fixedCardAspectRatio ?? sourceAspectRatio ?? (16.0 / 9.0)
+        guard candidate.isFinite, candidate > 0 else { return 16.0 / 9.0 }
+        return min(3, max(1.0 / 3.0, candidate))
+    }
+}
+
 struct ExportSettings: Sendable {
     var gridSide: Int = 4
+    var layoutAspect: StoryboardAspect = .source
     var format: ExportFormat = .png
     var width: Int = 2560
     var showTimestamps = false
@@ -22,6 +59,10 @@ struct ExportSettings: Sendable {
 
     var frameCount: Int { gridSide * gridSide }
     var safeWidth: Int { max(1920, min(width, 12_000)) }
+
+    func resolvedCardAspectRatio(for frames: [CapturedFrame]) -> Double {
+        layoutAspect.resolvedCardAspectRatio(sourceAspectRatio: frames.first?.aspectRatio)
+    }
 
     func titleWatermark(for sourceURL: URL) -> String? {
         guard showTitleWatermark else { return nil }
@@ -102,6 +143,9 @@ struct FrameDescriptor: Identifiable, Sendable {
     let sharpness: Float
     let fingerprint: UInt64
     let previewData: Data?
+    /// Set from the same AVFoundation image used for metrics, so choosing a
+    /// source-matched layout never needs another image decode.
+    var aspectRatio: Double = 16.0 / 9.0
     var peopleScore: Float = 0
 
     var isUsable: Bool {
@@ -123,6 +167,16 @@ struct CapturedFrame: Sendable, Identifiable {
     let id: Int
     let time: Double
     let jpegData: Data
+    /// Captured after AVFoundation applies the video's preferred track transform,
+    /// so a phone video is reported as vertical rather than its encoded rotation.
+    let aspectRatio: Double
+
+    init(id: Int, time: Double, jpegData: Data, aspectRatio: Double = 16.0 / 9.0) {
+        self.id = id
+        self.time = time
+        self.jpegData = jpegData
+        self.aspectRatio = aspectRatio
+    }
 }
 
 struct StoryboardResult: Sendable {

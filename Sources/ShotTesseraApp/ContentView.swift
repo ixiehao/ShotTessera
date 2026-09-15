@@ -68,6 +68,26 @@ struct ContentView: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Label("画面比例", systemImage: "aspectratio")
+                        .font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Picker("画面比例", selection: $model.layoutAspect) {
+                        ForEach(StoryboardAspect.allCases) { aspect in
+                            Text(aspect.rawValue).tag(aspect)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
+                    .disabled(model.isProcessing)
+                }
+                Text("默认随视频比例完整保留竖屏、方屏和横屏构图。")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
             VStack(alignment: .leading, spacing: 10) {
                 Label("导出", systemImage: "arrow.down.to.line.compact")
                     .font(.system(size: 13, weight: .semibold))
@@ -166,7 +186,11 @@ struct ContentView: View {
 
             Group {
                 if model.isProcessing {
-                    ProgressiveStoryboardPreview(gridSide: model.activeGridSide, frames: model.livePreviewFrames)
+                    ProgressiveStoryboardPreview(
+                        gridSide: model.activeGridSide,
+                        cardAspectRatio: model.activeCardAspectRatio,
+                        frames: model.livePreviewFrames
+                    )
                 } else if let image = model.previewImage {
                     VStack(spacing: 16) {
                         Image(nsImage: image)
@@ -201,6 +225,7 @@ struct ContentView: View {
 final class StoryboardViewModel: ObservableObject {
     @Published private(set) var videoJobs: [VideoJob] = []
     @Published var gridSide = 4
+    @Published var layoutAspect: StoryboardAspect = .source
     @Published var format: ExportFormat = .png
     @Published var width = 2560
     @Published var showTimestamps = false
@@ -208,6 +233,7 @@ final class StoryboardViewModel: ObservableObject {
     @Published var previewImage: NSImage?
     @Published var livePreviewFrames: [NSImage] = []
     @Published private(set) var activeGridSide = 4
+    @Published private(set) var activeCardAspectRatio = 16.0 / 9.0
     @Published private(set) var activeJobIndex = 0
     @Published private(set) var activeJobCount = 0
     @Published var isProcessing = false
@@ -298,6 +324,7 @@ final class StoryboardViewModel: ObservableObject {
         progress = 0
         let settings = ExportSettings(
             gridSide: gridSide,
+            layoutAspect: layoutAspect,
             format: format,
             width: width,
             showTimestamps: showTimestamps,
@@ -312,7 +339,13 @@ final class StoryboardViewModel: ObservableObject {
             for (index, videoURL) in sourceURLs.enumerated() {
                 do {
                     try Task.checkCancellation()
-                    await bridge.beginJob(source: videoURL, index: index, total: sourceURLs.count, gridSide: settings.gridSide)
+                    await bridge.beginJob(
+                        source: videoURL,
+                        index: index,
+                        total: sourceURLs.count,
+                        gridSide: settings.gridSide,
+                        layoutAspect: settings.layoutAspect
+                    )
                     let result = try await analyzer.analyze(
                         videoURL: videoURL,
                         gridSide: settings.gridSide,
@@ -346,10 +379,14 @@ final class StoryboardViewModel: ObservableObject {
         outputDescription = "已取消生成。"
     }
 
-    func beginJob(source: URL, index: Int, total: Int, gridSide: Int) {
+    private var activeUsesSourceAspect = true
+
+    func beginJob(source: URL, index: Int, total: Int, gridSide: Int, layoutAspect: StoryboardAspect) {
         activeJobIndex = index
         activeJobCount = total
         activeGridSide = gridSide
+        activeUsesSourceAspect = layoutAspect == .source
+        activeCardAspectRatio = layoutAspect.resolvedCardAspectRatio(sourceAspectRatio: nil)
         livePreviewFrames = []
         progress = 0
         if videoJobs.indices.contains(index) { videoJobs[index].state = .processing }
@@ -358,6 +395,9 @@ final class StoryboardViewModel: ObservableObject {
 
     func appendPreview(_ frame: CapturedFrame, index: Int, total: Int) {
         guard let image = NSImage(data: frame.jpegData) else { return }
+        if activeUsesSourceAspect {
+            activeCardAspectRatio = StoryboardAspect.source.resolvedCardAspectRatio(sourceAspectRatio: frame.aspectRatio)
+        }
         livePreviewFrames.append(image)
         progress = max(progress, 0.72 + 0.26 * Double(index) / Double(max(1, total)))
     }
@@ -438,9 +478,21 @@ private final class UIStateBridge: @unchecked Sendable {
         Task { @MainActor [weak self] in self?.model?.progress = progress }
     }
 
-    func beginJob(source: URL, index: Int, total: Int, gridSide: Int) async {
+    func beginJob(
+        source: URL,
+        index: Int,
+        total: Int,
+        gridSide: Int,
+        layoutAspect: StoryboardAspect
+    ) async {
         await MainActor.run { [weak self] in
-            self?.model?.beginJob(source: source, index: index, total: total, gridSide: gridSide)
+            self?.model?.beginJob(
+                source: source,
+                index: index,
+                total: total,
+                gridSide: gridSide,
+                layoutAspect: layoutAspect
+            )
         }
     }
 
@@ -593,10 +645,12 @@ private struct VideoBatchCard: View {
 
 private struct ProgressiveStoryboardPreview: View {
     let gridSide: Int
+    let cardAspectRatio: Double
     let frames: [NSImage]
 
     var body: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: gridSide)
+        let safeAspectRatio = min(3, max(1.0 / 3.0, cardAspectRatio))
         VStack(spacing: 12) {
             Text("正在实时拼接 · \(frames.count) / \(gridSide * gridSide) 张")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -617,10 +671,11 @@ private struct ProgressiveStoryboardPreview: View {
                             }
                         }
                     }
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .aspectRatio(safeAspectRatio, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
             }
+            .aspectRatio(safeAspectRatio, contentMode: .fit)
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

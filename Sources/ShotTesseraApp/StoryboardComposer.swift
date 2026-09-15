@@ -7,13 +7,14 @@ import UniformTypeIdentifiers
 
 enum StoryboardComposer {
     static func render(result: StoryboardResult, settings: ExportSettings) throws -> Data {
-        let width = settings.safeWidth
+        let layout = makeLayout(
+            requestedWidth: settings.safeWidth,
+            gridSide: settings.gridSide,
+            cardAspectRatio: settings.resolvedCardAspectRatio(for: result.frames)
+        )
+        let width = layout.width
+        let height = layout.height
         let side = settings.gridSide
-        let margin = max(28, width / 42)
-        let gap = max(10, width / 190)
-        let cellWidth = (width - margin * 2 - gap * (side - 1)) / side
-        let cellHeight = Int(Double(cellWidth) * 9.0 / 16.0)
-        let height = margin * 2 + cellHeight * side + gap * (side - 1)
 
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
@@ -32,9 +33,9 @@ enum StoryboardComposer {
         for cellIndex in 0..<(side * side) {
             let column = cellIndex % side
             let row = side - 1 - cellIndex / side
-            let x = margin + column * (cellWidth + gap)
-            let y = margin + row * (cellHeight + gap)
-            let rect = CGRect(x: x, y: y, width: cellWidth, height: cellHeight)
+            let x = layout.margin + column * (layout.cellWidth + layout.gap)
+            let y = layout.margin + row * (layout.cellHeight + layout.gap)
+            let rect = CGRect(x: x, y: y, width: layout.cellWidth, height: layout.cellHeight)
             let frame = result.frames[safe: cellIndex] ?? result.frames.last
             drawCard(
                 in: context,
@@ -59,6 +60,43 @@ enum StoryboardComposer {
         CGImageDestinationAddImage(destination, image, options as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { throw StoryboardError.noExportData }
         return mutableData as Data
+    }
+
+    /// Keeps a high requested width for ordinary exports while putting a hard
+    /// ceiling on memory use for a very tall 8×8 phone-video contact sheet.
+    /// The normal 2560 px portrait case remains untouched; only exceptional
+    /// 12,000 px requests are scaled down before allocating a bitmap context.
+    static func canvasSize(result: StoryboardResult, settings: ExportSettings) -> CGSize {
+        let layout = makeLayout(
+            requestedWidth: settings.safeWidth,
+            gridSide: settings.gridSide,
+            cardAspectRatio: settings.resolvedCardAspectRatio(for: result.frames)
+        )
+        return CGSize(width: layout.width, height: layout.height)
+    }
+
+    private static func makeLayout(
+        requestedWidth: Int,
+        gridSide: Int,
+        cardAspectRatio: Double
+    ) -> StoryboardLayout {
+        let safeSide = max(1, gridSide)
+        let safeRatio = max(1.0 / 3.0, min(3, cardAspectRatio))
+        let initial = StoryboardLayout(width: requestedWidth, gridSide: safeSide, cardAspectRatio: safeRatio)
+        let maxDimension = 16_384.0
+        let maxPixels = 100_000_000.0
+        let pixelCount = Double(initial.width * initial.height)
+        let scale = min(
+            1,
+            maxDimension / Double(max(initial.width, initial.height)),
+            sqrt(maxPixels / max(1, pixelCount))
+        )
+        guard scale < 0.999 else { return initial }
+        return StoryboardLayout(
+            width: max(1_920, Int((Double(requestedWidth) * scale).rounded(.down))),
+            gridSide: safeSide,
+            cardAspectRatio: safeRatio
+        )
     }
 
     private static func drawCard(
@@ -199,6 +237,24 @@ enum StoryboardComposer {
         }
         context.interpolationQuality = .high
         context.draw(image, in: drawRect)
+    }
+}
+
+private struct StoryboardLayout {
+    let width: Int
+    let height: Int
+    let margin: Int
+    let gap: Int
+    let cellWidth: Int
+    let cellHeight: Int
+
+    init(width: Int, gridSide: Int, cardAspectRatio: Double) {
+        self.width = width
+        margin = max(28, width / 42)
+        gap = max(10, width / 190)
+        cellWidth = max(1, (width - margin * 2 - gap * (gridSide - 1)) / gridSide)
+        cellHeight = max(1, Int((Double(cellWidth) / cardAspectRatio).rounded(.down)))
+        height = margin * 2 + cellHeight * gridSide + gap * (gridSide - 1)
     }
 }
 
