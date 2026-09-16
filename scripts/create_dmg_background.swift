@@ -97,6 +97,23 @@ func drawText(
     ).draw(in: rect)
 }
 
+// Keep the header independent from Finder's icon labels: it identifies the
+// product while the two native icons below retain the entire installation flow.
+drawText(
+    "视频一键截屏拼图",
+    in: NSRect(x: 104, y: 610, width: 1072, height: 42),
+    font: NSFont.systemFont(ofSize: 31, weight: .bold),
+    color: NSColor(calibratedRed: 0.14, green: 0.17, blue: 0.23, alpha: 0.96),
+    alignment: .center
+)
+drawText(
+    "拖入“应用程序”完成安装",
+    in: NSRect(x: 104, y: 573, width: 1072, height: 24),
+    font: NSFont.systemFont(ofSize: 16, weight: .medium),
+    color: NSColor(calibratedRed: 0.31, green: 0.34, blue: 0.40, alpha: 0.64),
+    alignment: .center
+)
+
 drawText(
     "适用于 Apple Silicon 与 Intel Mac · macOS 13 及以上版本",
     in: NSRect(x: 104, y: 80, width: 1072, height: 20),

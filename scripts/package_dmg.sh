@@ -72,14 +72,17 @@ if [[ -z "$mounted_device" || -z "$mount_point" ]]; then
   exit 1
 fi
 
-osascript - "$product_name" "$product_name.app" "应用程序" <<'APPLESCRIPT'
+osascript - "$mount_point" "$product_name.app" "应用程序" <<'APPLESCRIPT'
 on run argv
-  set volumeName to item 1 of argv
+  set mountPath to item 1 of argv
   set appName to item 2 of argv
   set applicationsName to item 3 of argv
 
   tell application "Finder"
-    tell disk volumeName
+    -- Resolve the disk from the mount path rather than its display name. This
+    -- avoids styling the wrong image when a prior release is still mounted.
+    set mountedDisk to disk of ((POSIX file mountPath) as alias)
+    tell mountedDisk
       open
       tell container window
         set current view to icon view
