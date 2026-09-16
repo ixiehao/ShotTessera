@@ -62,30 +62,21 @@ guard let graphicsContext = NSGraphicsContext.current?.cgContext else {
 }
 
 graphicsContext.draw(backgroundCGImage, in: canvasRect)
-NSColor(calibratedRed: 0.025, green: 0.055, blue: 0.13, alpha: 0.84).setFill()
+NSColor(calibratedRed: 0.965, green: 0.970, blue: 0.980, alpha: 0.960).setFill()
 NSBezierPath(rect: canvasRect).fill()
 
-let glow = NSGradient(colors: [
-    NSColor(calibratedRed: 0.22, green: 0.78, blue: 0.96, alpha: 0.20),
-    NSColor(calibratedRed: 0.56, green: 0.42, blue: 0.98, alpha: 0.10),
+let coolWash = NSGradient(colors: [
+    NSColor(calibratedRed: 0.34, green: 0.80, blue: 0.98, alpha: 0.048),
+    NSColor(calibratedRed: 0.56, green: 0.53, blue: 0.98, alpha: 0.022),
     NSColor.clear
 ])!
-glow.draw(
-    fromCenter: NSPoint(x: 640, y: 355),
+coolWash.draw(
+    fromCenter: NSPoint(x: 640, y: 300),
     radius: 0,
-    toCenter: NSPoint(x: 640, y: 355),
-    radius: 465,
+    toCenter: NSPoint(x: 640, y: 300),
+    radius: 610,
     options: [.drawsAfterEndingLocation]
 )
-
-func roundedPanel(_ rect: NSRect, radius: CGFloat, fill: NSColor, border: NSColor) {
-    let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-    fill.setFill()
-    path.fill()
-    border.setStroke()
-    path.lineWidth = 1
-    path.stroke()
-}
 
 func drawText(
     _ text: String,
@@ -106,109 +97,23 @@ func drawText(
     ).draw(in: rect)
 }
 
-// A restrained, single installation rail gives the two draggable Finder icons
-// a clear relationship without competing with them for attention.
-roundedPanel(
-    NSRect(x: 104, y: 168, width: 1072, height: 330),
-    radius: 34,
-    fill: NSColor.white.withAlphaComponent(0.065),
-    border: NSColor.white.withAlphaComponent(0.16)
-)
-roundedPanel(
-    NSRect(x: 142, y: 240, width: 208, height: 190),
-    radius: 25,
-    fill: NSColor.white.withAlphaComponent(0.105),
-    border: NSColor.white.withAlphaComponent(0.20)
-)
-roundedPanel(
-    NSRect(x: 930, y: 240, width: 208, height: 190),
-    radius: 25,
-    fill: NSColor.white.withAlphaComponent(0.105),
-    border: NSColor.white.withAlphaComponent(0.20)
-)
-roundedPanel(
-    NSRect(x: 488, y: 314, width: 304, height: 68),
-    radius: 34,
-    fill: NSColor(calibratedRed: 0.20, green: 0.77, blue: 0.95, alpha: 0.15),
-    border: NSColor(calibratedRed: 0.41, green: 0.88, blue: 0.98, alpha: 0.42)
-)
-roundedPanel(
-    NSRect(x: 136, y: 198, width: 220, height: 38),
-    radius: 14,
-    fill: NSColor.white.withAlphaComponent(0.66),
-    border: NSColor.white.withAlphaComponent(0.25)
-)
-roundedPanel(
-    NSRect(x: 924, y: 198, width: 220, height: 38),
-    radius: 14,
-    fill: NSColor.white.withAlphaComponent(0.66),
-    border: NSColor.white.withAlphaComponent(0.25)
-)
-
 drawText(
-    "INSTALL · 视频一键截屏拼图",
-    in: NSRect(x: 104, y: 661, width: 760, height: 18),
-    font: NSFont.systemFont(ofSize: 11, weight: .semibold),
-    color: NSColor(calibratedRed: 0.46, green: 0.86, blue: 0.98, alpha: 1)
-)
-drawText(
-    "把视频织成一张分镜图",
-    in: NSRect(x: 104, y: 610, width: 820, height: 42),
-    font: NSFont.systemFont(ofSize: 32, weight: .bold),
-    color: .white
-)
-drawText(
-    "将左侧 App 拖入右侧“应用程序”文件夹，即可完成安装。",
-    in: NSRect(x: 104, y: 578, width: 880, height: 25),
-    font: NSFont.systemFont(ofSize: 16, weight: .medium),
-    color: NSColor.white.withAlphaComponent(0.74)
-)
-drawText(
-    "01  应用",
-    in: NSRect(x: 166, y: 394, width: 160, height: 18),
-    font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold),
-    color: NSColor.white.withAlphaComponent(0.62),
-    alignment: .center
-)
-drawText(
-    "02  应用程序",
-    in: NSRect(x: 950, y: 394, width: 168, height: 18),
-    font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold),
-    color: NSColor.white.withAlphaComponent(0.62),
-    alignment: .center
-)
-drawText(
-    "拖入安装",
-    in: NSRect(x: 520, y: 276, width: 240, height: 18),
-    font: NSFont.systemFont(ofSize: 12, weight: .semibold),
-    color: NSColor.white.withAlphaComponent(0.72),
-    alignment: .center
-)
-drawText(
-    "安装后，可从“应用程序”或 Launchpad 打开。",
-    in: NSRect(x: 104, y: 98, width: 1072, height: 20),
-    font: NSFont.systemFont(ofSize: 13, weight: .medium),
-    color: NSColor.white.withAlphaComponent(0.62),
+    "适用于 Apple Silicon 与 Intel Mac · macOS 13 及以上版本",
+    in: NSRect(x: 104, y: 80, width: 1072, height: 20),
+    font: NSFont.systemFont(ofSize: 13, weight: .regular),
+    color: NSColor(calibratedRed: 0.31, green: 0.34, blue: 0.40, alpha: 0.48),
     alignment: .center
 )
 
 let arrowPath = NSBezierPath()
-arrowPath.move(to: NSPoint(x: 540, y: 348))
-arrowPath.line(to: NSPoint(x: 742, y: 348))
-arrowPath.lineWidth = 7
+arrowPath.move(to: NSPoint(x: 607, y: 340))
+arrowPath.line(to: NSPoint(x: 655, y: 300))
+arrowPath.line(to: NSPoint(x: 607, y: 260))
+arrowPath.lineWidth = 10
 arrowPath.lineCapStyle = .round
-NSColor(calibratedRed: 0.34, green: 0.87, blue: 0.93, alpha: 0.95).setStroke()
+arrowPath.lineJoinStyle = .round
+NSColor(calibratedRed: 0.18, green: 0.21, blue: 0.27, alpha: 0.75).setStroke()
 arrowPath.stroke()
-
-let arrowHead = NSBezierPath()
-arrowHead.move(to: NSPoint(x: 742, y: 348))
-arrowHead.line(to: NSPoint(x: 714, y: 370))
-arrowHead.move(to: NSPoint(x: 742, y: 348))
-arrowHead.line(to: NSPoint(x: 714, y: 326))
-arrowHead.lineWidth = 7
-arrowHead.lineCapStyle = .round
-arrowHead.lineJoinStyle = .round
-arrowHead.stroke()
 
 NSGraphicsContext.restoreGraphicsState()
 guard let pngData = bitmap.representation(using: .png, properties: [:]) else {

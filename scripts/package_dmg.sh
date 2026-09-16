@@ -89,13 +89,12 @@ on run argv
       end tell
       set viewOptions to the icon view options of container window
       set arrangement of viewOptions to not arranged
-      set icon size of viewOptions to 118
+      set icon size of viewOptions to 144
       set text size of viewOptions to 14
       set backgroundImage to file "install-background.png" of folder "Background"
       set background picture of viewOptions to backgroundImage
-      set extension hidden of item appName to true
-      set position of item appName to {246, 386}
-      set position of item applicationsName to {1034, 386}
+      set position of item appName to {320, 386}
+      set position of item applicationsName to {960, 386}
       close
       open
       update without registering applications
