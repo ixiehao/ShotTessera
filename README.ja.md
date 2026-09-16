@@ -6,6 +6,8 @@ ShotTessera は、動画から代表的なフレームを選び、一枚の見�
 
 別名は **视频一键截屏拼图** です。動画スクリーンショット、動画コンタクトシート、絵コンテ作成、動画フレーム抽出のための macOS ツールとして検索できます。
 
+> **安定版：**[v0.2.2 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.2) · macOS 13 以降 · Apple Silicon / Intel Mac
+
 ## 一枚で分かる仕組み
 
 ![動画から有効なフレームを選び、コンタクトシートにして書き出す ShotTessera の流れ](docs/assets/video-to-storyboard-overview.png)
@@ -36,6 +38,13 @@ ShotTessera は、動画から代表的なフレームを選び、一枚の見�
 
 Apple Silicon または Intel Mac と macOS 13 以降が必要です。アプリは ad-hoc 署名済みですが Apple の公証は受けていません。初回起動時に Gatekeeper の警告が出る場合は、Control-click して「開く」を選んでください。
 
+## プロジェクトとフィードバック
+
+- 開発者：[xao](https://github.com/ixiehao)
+- ソース、ダウンロード、リリースノート：[github.com/ixiehao/ShotTessera](https://github.com/ixiehao/ShotTessera)
+- 不具合報告・提案：[GitHub Issue を作成](https://github.com/ixiehao/ShotTessera/issues/new/choose)
+- 更新履歴：[CHANGELOG.md](CHANGELOG.md) · プライバシー：[PRIVACY.md](PRIVACY.md)
+
 ## 権利と帰属
 
 - このリポジトリの Swift ソース、文書、Tessera Iris アイコンは本プロジェクトのオリジナルであり、[MIT License](LICENSE) で公開されています。
@@ -49,3 +58,5 @@ Apple Silicon または Intel Mac と macOS 13 以降が必要です。アプリ
 ## ライセンス
 
 プロジェクトのコードとオリジナル資産は [MIT License](LICENSE) です。同梱の Noto フォントには、別途 [SIL Open Font License 1.1](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt) が適用されます。
+
+協力方法は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。参加前に [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) もお読みください。

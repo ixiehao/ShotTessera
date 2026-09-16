@@ -4,6 +4,8 @@
 
 **ShotTessera** is a small native macOS app that turns video into a clean contact sheet, storyboard, or screenshot collage. It is also named **视频一键截屏拼图**.
 
+> **Stable release:** [v0.2.2 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.2) · macOS 13+ · Apple Silicon and Intel
+
 ## Download
 
 1. Open [the latest release](https://github.com/ixiehao/ShotTessera/releases/latest) and download the universal **DMG**.
@@ -11,6 +13,13 @@
 3. Open the app and choose or drop in one or more videos.
 
 Requires an Apple Silicon or Intel Mac running macOS 13 or later. The app is ad-hoc signed but not Apple-notarized; if macOS shows a Gatekeeper warning on first launch, Control-click the app and choose **Open**.
+
+## Project
+
+- Developer: [xao](https://github.com/ixiehao)
+- Source, downloads, and release notes: [github.com/ixiehao/ShotTessera](https://github.com/ixiehao/ShotTessera)
+- Feedback and feature ideas: [open a GitHub issue](https://github.com/ixiehao/ShotTessera/issues/new/choose)
+- What changed: [CHANGELOG.md](CHANGELOG.md) · Privacy promise: [PRIVACY.md](PRIVACY.md)
 
 ## At a glance
 
@@ -36,3 +45,5 @@ All frame analysis and export happen on your Mac. ShotTessera has no account, te
 ## License
 
 Project code and original assets are released under the [MIT License](LICENSE). The bundled Noto Sans CJK SC Bold font is unmodified and separately licensed under the [SIL Open Font License 1.1](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt); see [NOTICE.md](NOTICE.md). Follow applicable local laws and only process video you own or are authorised to analyse.
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.

@@ -2,14 +2,21 @@ name: Verify
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-test:
-    runs-on: macos-latest
+  test:
+    name: Swift tests
+    runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - name: Build
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Build release
         run: swift build -c release
-      - name: Test frame-selection rules
+      - name: Run tests
         run: swift test

@@ -33,7 +33,11 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "status.batchCompleted", "status.batchCompletedWithFailures", "job.queued", "job.processing", "job.completed",
         "job.failed", "queue.more", "queue.clear", "video.add", "video.added", "video.support",
         "video.queueHint", "preview.live", "preview.empty.title", "preview.empty.description", "error.unreadableVideo",
-        "error.unsupportedCodec", "error.noUsableFrames", "error.noExportData"
+        "error.unsupportedCodec", "error.noUsableFrames", "error.noExportData", "about.menu", "about.developer",
+        "about.feedback", "about.privacy", "about.license", "help.menu", "help.title", "help.intro",
+        "help.step.add.title", "help.step.add.detail", "help.step.settings.title", "help.step.settings.detail",
+        "help.step.create.title", "help.step.create.detail", "help.troubleshoot.title", "help.troubleshoot.detail",
+        "help.privacy", "help.project", "help.feedback"
     ]
 
     func text(_ key: String, _ arguments: CVarArg...) -> String {

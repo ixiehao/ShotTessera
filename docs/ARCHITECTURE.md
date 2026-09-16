@@ -61,8 +61,9 @@ used to fill every requested cell on sparse, long-shot source material.
 - Frame support and decode performance are determined by the codecs available
   in the user's macOS installation. Long or high-resolution videos can take
   time, though sampling is capped to keep work bounded.
-- The renderer currently targets 16:9 cards. Portrait and unusual aspect-ratio
-  video is aspect-filled and may be cropped at the edges.
+- The default layout preserves the source video's aspect ratio. 16:9, 4:3,
+  1:1, 3:4, 9:16, and 21:9 layouts are also available; every tile is still
+  aspect-filled and may crop at its edges.
 
 ## Contributor notes
 

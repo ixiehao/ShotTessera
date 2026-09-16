@@ -1,19 +1,18 @@
 # GitHub metadata for 视频一键截屏拼图
 
 GitHub indexes the repository title, description, topics, README heading, and
-social preview. The README already contains the project name and relevant
-search terms. When this repository is pushed to GitHub, set the following
-fields in **Settings → General** and the repository's **About** panel.
+social preview. Keep the public metadata below aligned with the stable release.
 
 ## Repository description
 
-`视频一键截屏拼图 (ShotTessera) — Native macOS video screenshot collage, contact sheet, and storyboard generator. Fast local frame selection; no FFmpeg, Electron, cloud upload, or tracking.`
+`视频一键截屏拼图 (ShotTessera) — Native macOS video screenshot collage, contact sheet, and storyboard generator. Local, fast, private, and open source.`
 
 ## Suggested topics
 
-`macos`, `swift`, `swiftui`, `video-screenshot`, `screenshot-collage`,
-`contact-sheet`, `storyboard`, `frame-extraction`, `video-tools`,
-`video-editor`, `open-source`, `privacy`, `offline`, `chinese`, `japanese`.
+`macos`, `macos-app`, `swift`, `swiftui`, `video-screenshot`,
+`screenshot-collage`, `video-collage`, `contact-sheet`, `storyboard`,
+`video-storyboard`, `frame-extraction`, `video-tools`, `open-source`,
+`privacy`, `offline`, `chinese`, `japanese`.
 
 ## Social-preview copy
 
@@ -22,5 +21,13 @@ fields in **Settings → General** and the repository's **About** panel.
 Turn a video into a clean screenshot collage or storyboard on macOS. Local,
 fast, private, and open source.
 
-No GitHub remote is configured in this local checkout, so these account-level
-fields are documented here rather than being changed remotely.
+Use [`docs/assets/social-preview.jpg`](assets/social-preview.jpg) for the
+repository social preview. It is a 1280 × 640 px JPEG and remains below
+GitHub's 1 MB recommendation.
+
+## Links shown in the app and documentation
+
+- Developer: [xao](https://github.com/ixiehao)
+- Repository: <https://github.com/ixiehao/ShotTessera>
+- Releases: <https://github.com/ixiehao/ShotTessera/releases/latest>
+- Feedback: <https://github.com/ixiehao/ShotTessera/issues/new/choose>

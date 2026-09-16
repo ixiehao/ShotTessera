@@ -6,6 +6,8 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 
 项目名称为 **视频一键截屏拼图**，适合搜索“视频截图拼图”“视频一键截图”“分镜图生成器”“视频九宫格截图”“视频联系表”等关键词。
 
+> **稳定版：**[v0.2.2 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.2) · macOS 13+ · Apple Silicon 与 Intel Mac
+
 ## 一张图看懂功能
 
 ![视频一键截屏拼图的工作流程：视频画面经过智能挑选，组成分镜网格并导出](docs/assets/video-to-storyboard-overview.png)
@@ -36,6 +38,13 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 
 需要 Apple Silicon 或 Intel Mac，以及 macOS 13 或更高版本。应用使用 ad-hoc 签名、尚未经过 Apple 公证；如果首次打开时出现系统拦截提示，请按住 Control 点按应用并选择“打开”。
 
+## 项目与反馈
+
+- 开发者：[xao](https://github.com/ixiehao)
+- 源码、下载与版本说明：[github.com/ixiehao/ShotTessera](https://github.com/ixiehao/ShotTessera)
+- 反馈问题或提出建议：[创建 GitHub Issue](https://github.com/ixiehao/ShotTessera/issues/new/choose)
+- 更新记录：[CHANGELOG.md](CHANGELOG.md) · 隐私承诺：[PRIVACY.md](PRIVACY.md)
+
 ## 权利与归属
 
 - 本仓库中的 Swift 源码、文档和 Tessera Iris 图标均为本项目原创内容，按 [MIT License](LICENSE) 发布。
@@ -49,3 +58,5 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 ## 许可
 
 项目代码与原创资产使用 [MIT License](LICENSE)。随附 Noto 字体继续单独适用 [SIL Open Font License 1.1](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt)。
+
+欢迎参与改进，提交方式见 [CONTRIBUTING.md](CONTRIBUTING.md)；互动前请阅读 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。

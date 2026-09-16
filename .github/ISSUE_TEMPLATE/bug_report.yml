@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible problem in ShotTessera.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Do not attach private videos or personal data.
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: For example, v0.2.2 (6).
+      placeholder: v0.2.2 (6)
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version and Mac type
+      description: Include Apple Silicon or Intel.
+      placeholder: macOS 14.0, Apple Silicon
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Include an error message or a screenshot with private details removed.
+    validations:
+      required: true
