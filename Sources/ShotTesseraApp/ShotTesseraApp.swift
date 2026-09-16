@@ -144,10 +144,13 @@ final class ShotTesseraAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         guard !flag else { return true }
-        restoreMainWindow(in: sender)
+        Task { @MainActor [weak self] in
+            self?.restoreMainWindow(in: sender)
+        }
         return true
     }
 
+    @MainActor
     private func restoreMainWindow(in application: NSApplication) {
         guard let window = application.windows.first(where: { $0.contentView != nil }) else {
             application.activate(ignoringOtherApps: true)
@@ -160,6 +163,7 @@ final class ShotTesseraAppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    @MainActor
     func showAboutPanel(language: AppLanguage) {
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
             .credits: AboutCredits.make(language: language)
@@ -167,6 +171,7 @@ final class ShotTesseraAppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
+    @MainActor
     func showHelpPanel(language: AppLanguage) {
         let window: NSWindow
         if let existingWindow = helpWindow {

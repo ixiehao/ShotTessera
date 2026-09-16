@@ -509,7 +509,9 @@ final class StoryboardViewModel: ObservableObject {
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { [weak self] item, _ in
                 guard let data = item as? Data,
                       let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                Task { @MainActor in self?.addVideos([url]) }
+                Task { @MainActor [weak self] in
+                    self?.addVideos([url])
+                }
             }
         }
         return true
