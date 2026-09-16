@@ -20,7 +20,6 @@
 "export.width.value" = "%d px";
 "export.time" = "各コマに時刻を表示";
 "export.title" = "ファイル名を表示";
-"export.local.note" = "適用される現地の法令を守ってください。";
 "button.generate.single" = "絵コンテを作成";
 "button.generate.batch" = "%d 本の絵コンテを作成";
 "button.cancel" = "キャンセル";
@@ -28,7 +27,14 @@
 "accessibility.generate" = "絵コンテを作成";
 "accessibility.analyzing" = "動画を解析中";
 "preview.title" = "絵コンテのプレビュー";
+"preview.position" = "%d / %d";
 "button.saveas" = "%@ として保存";
+"button.openSaved" = "保存済み · Finder で開く";
+"button.openSaved.hint" = "最後に作成した画像を Finder に表示します";
+"button.adjustFrames" = "手動でコマを選択";
+"button.adjustFrames.hint" = "候補画像を選び、必要枚数がそろったら絵コンテを作成します";
+"button.previousResult" = "前の絵コンテを表示";
+"button.nextResult" = "次の絵コンテを表示";
 "status.processing" = "%d/%d 本目 · %@ · %d/%d 枚を取得";
 "status.empty" = "動画を選択または複数ドロップすると、順番に処理されます。";
 "default.video" = "動画";
@@ -39,6 +45,7 @@
 "status.cancelled" = "作成をキャンセルしました。";
 "status.nowProcessing" = "%@ を処理中";
 "status.saved" = "%d/%d 本目を %@ として保存しました。";
+"status.manualSaved" = "%@ として保存しました。";
 "status.generatedNotSaved" = "%d/%d 本目は作成されましたが、自動保存できませんでした。";
 "status.failedContinue" = "%d 本目を処理できないため、次へ進みます。";
 "status.batchCompleted" = "バッチ処理完了：%d 本を保存しました。";
@@ -49,6 +56,7 @@
 "job.failed" = "失敗";
 "queue.more" = "さらに %d 本が待機中";
 "queue.clear" = "キューを消去";
+"queue.clear.hint" = "すべての動画と現在のプレビューを消去します";
 "video.add" = "動画を一つ以上ドロップ";
 "video.added" = "%d 本の動画を追加";
 "video.support" = "MP4、MOV、MPEG などに対応";
@@ -79,3 +87,12 @@
 "help.privacy" = "すべての処理はこの Mac 上で行われます。利用権限のある動画だけを扱い、適用される現地の法令を守ってください。";
 "help.project" = "GitHub でプロジェクトを見る";
 "help.feedback" = "GitHub で問題を報告";
+"editor.title" = "手動でコマを選択";
+"editor.detail" = "異なる時刻の候補から複数選び、そろったら最終の絵コンテを作成します。通常の高速自動選択には影響しません。";
+"editor.loading" = "画面を読み込み中…";
+"editor.noPreview" = "時刻を動かしてプレビュー";
+"editor.apply" = "適用して保存";
+"editor.cancel" = "キャンセル";
+"editor.selectionCount" = "%d / %d 枚を選択";
+"editor.smartSelect" = "自動で選択";
+"editor.regenerate" = "別の候補を作成";

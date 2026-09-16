@@ -2,12 +2,21 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+private struct ManualFrameEditorRequest: Identifiable {
+    let id = UUID()
+    let previewID: RenderedStoryboardPreview.ID
+    let sourceURL: URL
+    let selectionLimit: Int
+    let duration: Double
+}
+
 struct ContentView: View {
     @StateObject private var model = StoryboardViewModel()
     @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
     @State private var isLanguagePickerPresented = false
     @State private var isAspectPickerPresented = false
     @State private var isWidthPickerPresented = false
+    @State private var manualFrameEditorRequest: ManualFrameEditorRequest?
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .chinese
@@ -49,6 +58,21 @@ struct ContentView: View {
         } message: {
             Text(model.errorMessage)
         }
+        .sheet(item: $manualFrameEditorRequest) { request in
+            ManualFrameEditor(
+                model: model,
+                sourceURL: request.sourceURL,
+                selectionLimit: request.selectionLimit,
+                language: language
+            ) { frames in
+                model.applyManuallySelectedFrames(
+                    frames,
+                    targetPreviewID: request.previewID,
+                    sourceURL: request.sourceURL,
+                    duration: request.duration
+                )
+            }
+        }
     }
 
     private var languageMenu: some View {
@@ -56,12 +80,11 @@ struct ContentView: View {
             isLanguagePickerPresented.toggle()
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: "globe")
+                ProjectIcon(symbol: .language, size: 15)
                     .foregroundStyle(Color(red: 0.48, green: 0.88, blue: 0.93))
                 Text(language.displayName)
                     .foregroundStyle(PreviewText.primary)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
+                ProjectIcon(symbol: .disclosure, size: 10)
                     .foregroundStyle(PreviewText.secondary)
             }
             .font(.system(size: 12, weight: .semibold))
@@ -93,7 +116,7 @@ struct ContentView: View {
                             Text(choice.displayName)
                             Spacer()
                             if choice == language {
-                                Image(systemName: "checkmark")
+                                ProjectIcon(symbol: .check, size: 14)
                                     .foregroundStyle(Color.accentColor)
                             }
                         }
@@ -124,18 +147,19 @@ struct ContentView: View {
                 Text(model.layoutAspect.label(in: language))
                     .font(.system(size: 11, weight: .medium))
                     .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .bold))
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
+                ProjectIcon(symbol: .selector, size: 11)
                     .foregroundStyle(.secondary)
             }
             .foregroundStyle(.primary)
-            .compactOptionSurface()
+            .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
+        .compactOptionSurface()
         .accessibilityLabel(t("section.aspect"))
-        .disabled(model.isProcessing)
+        .disabled(model.isBusy)
         .popover(isPresented: $isAspectPickerPresented, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(t("section.aspect"))
@@ -153,7 +177,7 @@ struct ContentView: View {
                             Text(aspect.label(in: language))
                             Spacer()
                             if aspect == model.layoutAspect {
-                                Image(systemName: "checkmark")
+                                ProjectIcon(symbol: .check, size: 14)
                                     .foregroundStyle(Color.accentColor)
                             }
                         }
@@ -185,18 +209,19 @@ struct ContentView: View {
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
                     .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .bold))
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
+                ProjectIcon(symbol: .selector, size: 11)
                     .foregroundStyle(.secondary)
             }
             .foregroundStyle(.primary)
-            .compactOptionSurface()
+            .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
+        .compactOptionSurface()
         .accessibilityLabel(t("export.width"))
-        .disabled(model.isProcessing)
+        .disabled(model.isBusy)
         .popover(isPresented: $isWidthPickerPresented, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(t("export.width"))
@@ -215,7 +240,7 @@ struct ContentView: View {
                                 .monospacedDigit()
                             Spacer()
                             if width == model.width {
-                                Image(systemName: "checkmark")
+                                ProjectIcon(symbol: .check, size: 14)
                                     .foregroundStyle(Color.accentColor)
                             }
                         }
@@ -250,14 +275,14 @@ struct ContentView: View {
                 }
             }
 
-            VideoBatchCard(jobs: model.videoJobs, language: language, isTargeted: model.isDropTargeted, isProcessing: model.isProcessing) {
+            VideoBatchCard(jobs: model.videoJobs, language: language, isTargeted: model.isDropTargeted, isLocked: model.isBusy) {
                 model.chooseVideo()
             } clear: {
                 model.clearVideos()
             }
 
             VStack(alignment: .leading, spacing: 11) {
-                Label(t("section.grid"), systemImage: "square.grid.3x3.fill")
+                GlyphLabel(title: t("section.grid"), glyph: .grid)
                     .font(.system(size: 13, weight: .semibold))
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
                     ForEach(StoryboardGrid.availableSides, id: \.self) { side in
@@ -270,14 +295,14 @@ struct ContentView: View {
                                 .padding(.vertical, 8)
                         }
                         .buttonStyle(GridChoiceStyle(isSelected: model.gridSide == side))
-                        .disabled(model.isProcessing)
+                        .disabled(model.isBusy)
                     }
                 }
             }
 
             VStack(alignment: .leading, spacing: 7) {
                 HStack {
-                    Label(t("section.frame"), systemImage: "rectangle.on.rectangle")
+                    GlyphLabel(title: t("section.frame"), glyph: .layers)
                         .font(.system(size: 13, weight: .semibold))
                 }
                 LazyVGrid(
@@ -286,52 +311,60 @@ struct ContentView: View {
                 ) {
                     aspectSelector
                     widthSelector
+
+                    Toggle(t("export.time"), isOn: $model.showTimestamps)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .allowsTightening(true)
+                        .toggleStyle(.switch)
+                        .tint(SelectionPalette.active)
+                        .compactOptionSurface()
+                        .disabled(model.isBusy)
+
+                    Toggle(t("export.title"), isOn: $model.showTitleWatermark)
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .allowsTightening(true)
+                        .toggleStyle(.switch)
+                        .tint(SelectionPalette.active)
+                        .compactOptionSurface()
+                        .disabled(model.isBusy)
                 }
                 .frame(maxWidth: .infinity)
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Label(t("section.export"), systemImage: "arrow.down.to.line.compact")
-                    .font(.system(size: 13, weight: .semibold))
-                Text(t("export.autosave"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Picker(t("export.format"), selection: $model.format) {
+                HStack(spacing: 7) {
+                    GlyphLabel(title: t("section.export"), glyph: .export)
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(t("export.autosave"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                HStack(spacing: 8) {
                     ForEach(ExportFormat.allCases) { format in
-                        Text(format.rawValue).tag(format)
+                        Button {
+                            model.format = format
+                        } label: {
+                            Text(format.rawValue)
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(GridChoiceStyle(isSelected: model.format == format))
+                        .disabled(model.isBusy)
                     }
                 }
-                .pickerStyle(.segmented)
-                .disabled(model.isProcessing)
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible())],
-                    spacing: 8
-                ) {
-                    Toggle(t("export.time"), isOn: $model.showTimestamps)
-                        .font(.system(size: 11, weight: .medium))
-                        .toggleStyle(.switch)
-                        .compactOptionSurface()
-                        .frame(maxWidth: .infinity)
-                        .disabled(model.isProcessing)
-
-                    Toggle(t("export.title"), isOn: $model.showTitleWatermark)
-                        .font(.system(size: 11, weight: .medium))
-                        .toggleStyle(.switch)
-                        .compactOptionSurface()
-                        .frame(maxWidth: .infinity)
-                        .disabled(model.isProcessing)
-                }
-                .frame(maxWidth: .infinity)
-                Text(t("export.local.note"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
             Button(action: model.generate) {
                 HStack(spacing: 9) {
                     if model.isProcessing { ProgressView().controlSize(.small) }
-                    Image(systemName: model.isProcessing ? "wand.and.stars.inverse" : "wand.and.stars")
+                    ProjectIcon(symbol: .wand, size: 17)
                     Text(model.isProcessing ? model.processingLabel : model.primaryButtonTitle)
                 }
                 .font(.system(size: 15, weight: .bold))
@@ -339,7 +372,7 @@ struct ContentView: View {
                 .padding(.vertical, 14)
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(!model.hasVideos || model.isProcessing)
+            .disabled(!model.hasVideos || model.isBusy)
             .accessibilityLabel(model.isProcessing ? t("accessibility.generating") : t("accessibility.generate"))
 
             if model.isProcessing {
@@ -359,6 +392,25 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .strokeBorder(.white.opacity(0.11))
         }
+    }
+
+    private func previewNavigationButton(
+        symbol: ProjectIcon.Symbol,
+        label: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            ProjectIcon(symbol: symbol, size: 20)
+                .frame(width: 42, height: 42)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? Color(red: 0.43, green: 0.85, blue: 0.93) : PreviewText.secondary.opacity(0.32))
+        .background(Color.white.opacity(enabled ? 0.08 : 0.035), in: Circle())
+        .overlay { Circle().strokeBorder(.white.opacity(enabled ? 0.13 : 0.05)) }
+        .disabled(!enabled)
+        .accessibilityLabel(label)
     }
 
     private var previewPanel: some View {
@@ -384,19 +436,76 @@ struct ContentView: View {
                         frames: model.livePreviewFrames
                     )
                 } else if let image = model.previewImage {
-                    VStack(spacing: 16) {
-                        Image(nsImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .shadow(color: .black.opacity(0.28), radius: 24, y: 12)
-                        Button(action: model.exportCurrentResult) {
-                            Label(t("button.saveas", (model.renderedFormat ?? model.format).rawValue), systemImage: "square.and.arrow.down")
-                                .font(.system(size: 14, weight: .bold))
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 10)
+                    VStack(spacing: 14) {
+                        HStack(spacing: 14) {
+                            if model.canBrowseCompletedPreviews {
+                                previewNavigationButton(
+                                    symbol: .previous,
+                                    label: t("button.previousResult"),
+                                    enabled: model.canShowPreviousPreview && !model.isApplyingFrameAdjustments,
+                                    action: model.showPreviousPreview
+                                )
+                            }
+
+                            Image(nsImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 660, maxHeight: 470)
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                .shadow(color: .black.opacity(0.28), radius: 24, y: 12)
+
+                            if model.canBrowseCompletedPreviews {
+                                previewNavigationButton(
+                                    symbol: .next,
+                                    label: t("button.nextResult"),
+                                    enabled: model.canShowNextPreview && !model.isApplyingFrameAdjustments,
+                                    action: model.showNextPreview
+                                )
+                            }
                         }
-                        .buttonStyle(ExportButtonStyle())
+                        .frame(maxWidth: .infinity)
+
+                        if model.canBrowseCompletedPreviews {
+                            Text(t("preview.position", model.selectedPreviewNumber, model.completedPreviews.count))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(PreviewText.secondary)
+                        }
+
+                        HStack(spacing: 10) {
+                            if model.lastSavedURL != nil {
+                                Button(action: model.revealLastSavedResult) {
+                                    GlyphLabel(title: t("button.openSaved"), glyph: .folder)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .padding(.horizontal, 11)
+                                        .padding(.vertical, 7)
+                                }
+                                .buttonStyle(SavedResultButtonStyle())
+                                .help(t("button.openSaved.hint"))
+                            } else {
+                                Button(action: model.exportCurrentResult) {
+                                    GlyphLabel(title: t("button.saveas", (model.renderedFormat ?? model.format).rawValue), glyph: .save)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .padding(.horizontal, 13)
+                                        .padding(.vertical, 8)
+                                }
+                                .buttonStyle(ExportButtonStyle())
+                            }
+
+                            if let request = model.manualEditorRequest {
+                                Button {
+                                    manualFrameEditorRequest = request
+                                } label: {
+                                    GlyphLabel(title: t("button.adjustFrames"), glyph: .sliders)
+                                        .font(.system(size: 14, weight: .bold))
+                                        .padding(.horizontal, 18)
+                                        .padding(.vertical, 10)
+                                        .frame(minWidth: 202)
+                                }
+                                .buttonStyle(ManualAdjustmentButtonStyle())
+                                .help(t("button.adjustFrames.hint"))
+                                .accessibilityIdentifier("manual-frame-selection")
+                            }
+                        }
                     }
                 } else {
                     EmptyPreview(language: language)
@@ -411,6 +520,17 @@ struct ContentView: View {
                 .strokeBorder(.white.opacity(0.10))
         }
     }
+}
+
+struct RenderedStoryboardPreview: Identifiable {
+    let id = UUID()
+    let image: NSImage
+    let data: Data
+    let storyboard: StoryboardResult
+    let format: ExportFormat
+    var savedURL: URL?
+    let jobIndex: Int
+    let jobCount: Int
 }
 
 @MainActor
@@ -436,7 +556,12 @@ final class StoryboardViewModel: ObservableObject {
     @Published var errorMessage = ""
     @Published var outputDescription = ""
     @Published var renderedFormat: ExportFormat?
+    @Published private(set) var lastSavedURL: URL?
+    @Published private(set) var isApplyingFrameAdjustments = false
+    @Published private(set) var completedPreviews: [RenderedStoryboardPreview] = []
+    @Published private(set) var selectedPreviewIndex = 0
     fileprivate var generationTask: Task<Void, Never>?
+    private var generationRunID = UUID()
     private var pendingData: Data?
     private var pendingSource: URL?
     private var pendingFormat: ExportFormat?
@@ -446,7 +571,21 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     var hasVideos: Bool { !videoJobs.isEmpty }
-
+    var isBusy: Bool { isProcessing || isApplyingFrameAdjustments }
+    fileprivate var manualEditorRequest: ManualFrameEditorRequest? {
+        guard !isBusy, completedPreviews.indices.contains(selectedPreviewIndex) else { return nil }
+        let preview = completedPreviews[selectedPreviewIndex]
+        return ManualFrameEditorRequest(
+            previewID: preview.id,
+            sourceURL: preview.storyboard.sourceURL,
+            selectionLimit: max(1, preview.storyboard.frames.count),
+            duration: preview.storyboard.duration
+        )
+    }
+    var canBrowseCompletedPreviews: Bool { completedPreviews.count > 1 }
+    var canShowPreviousPreview: Bool { selectedPreviewIndex > 0 }
+    var canShowNextPreview: Bool { selectedPreviewIndex + 1 < completedPreviews.count }
+    var selectedPreviewNumber: Int { completedPreviews.isEmpty ? 0 : selectedPreviewIndex + 1 }
     var primaryButtonTitle: String {
         videoJobs.count > 1 ? t("button.generate.batch", videoJobs.count) : t("button.generate.single")
     }
@@ -479,30 +618,37 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     func addVideos(_ urls: [URL]) {
+        guard !isBusy else { return }
         var knownPaths = Set(videoJobs.map { $0.url.standardizedFileURL.path })
         let candidates = urls
             .map(\.standardizedFileURL)
-        let additions = candidates
-            .filter(SupportedVideoInput.accepts)
+        let supported = candidates.filter(SupportedVideoInput.accepts)
+        let additions = supported
             .filter { knownPaths.insert($0.path).inserted }
             .map { VideoJob(url: $0) }
         videoJobs.append(contentsOf: additions)
-        if additions.count < candidates.count {
+        if supported.count < candidates.count {
             errorMessage = t("error.unsupportedInput")
             showError = true
         }
     }
 
     func clearVideos() {
-        guard !isProcessing else { return }
+        guard !isBusy else { return }
         videoJobs.removeAll()
         previewImage = nil
         livePreviewFrames = []
         outputDescription = ""
+        lastSavedURL = nil
+        pendingData = nil
+        pendingSource = nil
+        pendingFormat = nil
+        completedPreviews = []
+        selectedPreviewIndex = 0
     }
 
     func acceptDrop(providers: [NSItemProvider]) -> Bool {
-        guard !isProcessing else { return false }
+        guard !isBusy else { return false }
         let fileProviders = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
         guard !fileProviders.isEmpty else { return false }
         for provider in fileProviders {
@@ -518,9 +664,17 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     func generate() {
-        guard !videoJobs.isEmpty else { return }
+        guard !videoJobs.isEmpty, !isBusy else { return }
+        let runID = UUID()
+        generationRunID = runID
         isProcessing = true
         progress = 0
+        lastSavedURL = nil
+        pendingData = nil
+        pendingSource = nil
+        pendingFormat = nil
+        completedPreviews = []
+        selectedPreviewIndex = 0
         let settings = ExportSettings(
             gridSide: gridSide,
             layoutAspect: layoutAspect,
@@ -531,7 +685,7 @@ final class StoryboardViewModel: ObservableObject {
             showTitleWatermark: showTitleWatermark
         )
         let analyzer = VideoStoryboardAnalyzer()
-        let bridge = UIStateBridge(model: self)
+        let bridge = UIStateBridge(model: self, generationRunID: runID)
         let sourceURLs = videoJobs.map(\.url)
         for index in videoJobs.indices { videoJobs[index].state = .queued }
 
@@ -558,13 +712,13 @@ final class StoryboardViewModel: ObservableObject {
                         }
                     )
                     let data = try StoryboardComposer.render(result: result, settings: settings)
-                    await bridge.finishJob(data: data, source: videoURL, settings: settings, index: index, total: sourceURLs.count)
+                    await bridge.finishJob(data: data, result: result, settings: settings, index: index, total: sourceURLs.count)
                 } catch is CancellationError {
                     await bridge.cancelled()
                     return
                 } catch {
                     let message = (error as? StoryboardError)?.message(in: settings.language) ?? error.localizedDescription
-                    await bridge.failJob(source: videoURL, index: index, message: message)
+                    await bridge.failJob(index: index, message: message)
                 }
             }
             await bridge.finishBatch()
@@ -573,6 +727,7 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     func cancelGeneration() {
+        generationRunID = UUID()
         generationTask?.cancel()
         generationTask = nil
         isProcessing = false
@@ -603,19 +758,34 @@ final class StoryboardViewModel: ObservableObject {
         progress = max(progress, 0.72 + 0.26 * Double(index) / Double(max(1, total)))
     }
 
-    func completeJob(data: Data, source: URL, settings: ExportSettings, index: Int, total: Int) {
-        previewImage = NSImage(data: data)
-        pendingData = data
-        pendingSource = source
-        pendingFormat = settings.format
-        renderedFormat = settings.format
+    func completeJob(data: Data, result: StoryboardResult, settings: ExportSettings, index: Int, total: Int) {
+        guard let image = NSImage(data: data) else {
+            markJobFailed(index: index, message: t("error.noExportData"))
+            return
+        }
+        var savedURL: URL?
         do {
-            let destination = ExportDestination.nextURL(for: source, format: settings.format)
+            let destination = ExportDestination.nextURL(for: result.sourceURL, format: settings.format)
             try data.write(to: destination, options: .atomic)
             if videoJobs.indices.contains(index) { videoJobs[index].state = .completed(destination.lastPathComponent) }
-            outputDescription = t("status.saved", index + 1, total, destination.lastPathComponent)
+            savedURL = destination
         } catch {
             if videoJobs.indices.contains(index) { videoJobs[index].state = .failed(error.localizedDescription) }
+        }
+
+        completedPreviews.append(
+            RenderedStoryboardPreview(
+                image: image,
+                data: data,
+                storyboard: result,
+                format: settings.format,
+                savedURL: savedURL,
+                jobIndex: index,
+                jobCount: total
+            )
+        )
+        selectPreview(at: completedPreviews.count - 1)
+        if savedURL == nil {
             outputDescription = t("status.generatedNotSaved", index + 1, total)
         }
     }
@@ -661,24 +831,169 @@ final class StoryboardViewModel: ObservableObject {
         panel.nameFieldStringValue = ExportDestination.nextURL(for: source, format: format).lastPathComponent
         panel.begin { response in
             guard response == .OK, let destination = panel.url else { return }
-            do { try data.write(to: destination, options: .atomic) }
+            do {
+                try data.write(to: destination, options: .atomic)
+                self.lastSavedURL = destination
+                if self.completedPreviews.indices.contains(self.selectedPreviewIndex) {
+                    self.completedPreviews[self.selectedPreviewIndex].savedURL = destination
+                }
+                self.outputDescription = self.t("status.manualSaved", destination.lastPathComponent)
+            }
             catch {
                 self.errorMessage = error.localizedDescription
                 self.showError = true
             }
         }
     }
+
+    func revealLastSavedResult() {
+        guard let lastSavedURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([lastSavedURL])
+    }
+
+    func showPreviousPreview() {
+        selectPreview(at: selectedPreviewIndex - 1)
+    }
+
+    func showNextPreview() {
+        selectPreview(at: selectedPreviewIndex + 1)
+    }
+
+    func applyManuallySelectedFrames(
+        _ frames: [CapturedFrame],
+        targetPreviewID: RenderedStoryboardPreview.ID,
+        sourceURL: URL,
+        duration: Double
+    ) {
+        guard !frames.isEmpty, !isApplyingFrameAdjustments else { return }
+        let updatedResult = StoryboardResult(
+            frames: frames,
+            sourceURL: sourceURL,
+            duration: duration
+        )
+        let settings = ExportSettings(
+            gridSide: gridSide,
+            layoutAspect: layoutAspect,
+            language: language,
+            format: format,
+            width: width,
+            showTimestamps: showTimestamps,
+            showTitleWatermark: showTitleWatermark
+        )
+        isApplyingFrameAdjustments = true
+        let bridge = UIStateBridge(model: self)
+
+        Task.detached(priority: .userInitiated) {
+            do {
+                let data = try StoryboardComposer.render(result: updatedResult, settings: settings)
+                await bridge.finishEditedFrames(
+                    data: data,
+                    result: updatedResult,
+                    settings: settings,
+                    targetPreviewID: targetPreviewID
+                )
+            } catch {
+                await bridge.failEditedFrames(
+                    message: (error as? StoryboardError)?.message(in: settings.language) ?? error.localizedDescription
+                )
+            }
+        }
+    }
+
+    fileprivate func completeEditedFrames(
+        data: Data,
+        result: StoryboardResult,
+        settings: ExportSettings,
+        targetPreviewID: RenderedStoryboardPreview.ID
+    ) {
+        defer { isApplyingFrameAdjustments = false }
+        guard let image = NSImage(data: data) else {
+            outputDescription = t("status.generatedNotSaved", 1, 1)
+            return
+        }
+        guard let targetIndex = completedPreviews.firstIndex(where: { $0.id == targetPreviewID }) else {
+            return
+        }
+        var savedURL: URL?
+        do {
+            let destination = ExportDestination.nextURL(for: result.sourceURL, format: settings.format)
+            try data.write(to: destination, options: .atomic)
+            savedURL = destination
+            if let jobIndex = videoJobs.firstIndex(where: { $0.url.standardizedFileURL == result.sourceURL.standardizedFileURL }) {
+                videoJobs[jobIndex].state = .completed(destination.lastPathComponent)
+            }
+        } catch {
+            savedURL = nil
+        }
+
+        let existing = completedPreviews[targetIndex]
+        let updated = RenderedStoryboardPreview(
+            image: image,
+            data: data,
+            storyboard: result,
+            format: settings.format,
+            savedURL: savedURL,
+            jobIndex: existing.jobIndex,
+            jobCount: existing.jobCount
+        )
+        completedPreviews[targetIndex] = updated
+        if selectedPreviewIndex == targetIndex {
+            selectPreview(at: targetIndex)
+            if let savedURL {
+                outputDescription = t("status.manualSaved", savedURL.lastPathComponent)
+            } else {
+                outputDescription = t("status.generatedNotSaved", 1, 1)
+            }
+        }
+    }
+
+    fileprivate func markFrameEditFailed(_ message: String) {
+        isApplyingFrameAdjustments = false
+        errorMessage = message
+        showError = true
+    }
+
+    private func selectPreview(at index: Int) {
+        guard completedPreviews.indices.contains(index) else { return }
+        selectedPreviewIndex = index
+        let preview = completedPreviews[index]
+        previewImage = preview.image
+        pendingData = preview.data
+        pendingSource = preview.storyboard.sourceURL
+        pendingFormat = preview.format
+        renderedFormat = preview.format
+        lastSavedURL = preview.savedURL
+        if let savedURL = preview.savedURL {
+            outputDescription = t("status.saved", preview.jobIndex + 1, preview.jobCount, savedURL.lastPathComponent)
+        } else {
+            outputDescription = t("status.generatedNotSaved", preview.jobIndex + 1, preview.jobCount)
+        }
+    }
+
+    fileprivate func acceptsGenerationUpdate(for runID: UUID?) -> Bool {
+        runID == nil || runID == generationRunID
+    }
 }
 
 private final class UIStateBridge: @unchecked Sendable {
     weak var model: StoryboardViewModel?
+    private let generationRunID: UUID?
 
-    init(model: StoryboardViewModel) {
+    init(model: StoryboardViewModel, generationRunID: UUID? = nil) {
         self.model = model
+        self.generationRunID = generationRunID
+    }
+
+    @MainActor
+    private func acceptsCurrentGeneration(_ model: StoryboardViewModel) -> Bool {
+        model.acceptsGenerationUpdate(for: generationRunID)
     }
 
     func report(progress: Double) {
-        Task { @MainActor [weak self] in self?.model?.progress = progress }
+        Task { @MainActor [weak self] in
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.progress = progress
+        }
     }
 
     func beginJob(
@@ -689,7 +1004,8 @@ private final class UIStateBridge: @unchecked Sendable {
         layoutAspect: StoryboardAspect
     ) async {
         await MainActor.run { [weak self] in
-            self?.model?.beginJob(
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.beginJob(
                 source: source,
                 index: index,
                 total: total,
@@ -701,28 +1017,307 @@ private final class UIStateBridge: @unchecked Sendable {
 
     func appendPreview(_ frame: CapturedFrame, index: Int, total: Int) {
         Task { @MainActor [weak self] in
-            self?.model?.appendPreview(frame, index: index, total: total)
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.appendPreview(frame, index: index, total: total)
         }
     }
 
-    func finishJob(data: Data, source: URL, settings: ExportSettings, index: Int, total: Int) async {
+    func finishJob(data: Data, result: StoryboardResult, settings: ExportSettings, index: Int, total: Int) async {
         await MainActor.run { [weak self] in
-            self?.model?.completeJob(data: data, source: source, settings: settings, index: index, total: total)
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.completeJob(data: data, result: result, settings: settings, index: index, total: total)
         }
     }
 
-    func failJob(source: URL, index: Int, message: String) async {
+    func failJob(index: Int, message: String) async {
         await MainActor.run { [weak self] in
-            self?.model?.markJobFailed(index: index, message: message)
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.markJobFailed(index: index, message: message)
         }
     }
 
     func finishBatch() async {
-        await MainActor.run { [weak self] in self?.model?.finishBatch() }
+        await MainActor.run { [weak self] in
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.finishBatch()
+        }
     }
 
     func cancelled() async {
-        await MainActor.run { [weak self] in self?.model?.markCancelled() }
+        await MainActor.run { [weak self] in
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.markCancelled()
+        }
+    }
+
+    func finishEditedFrames(
+        data: Data,
+        result: StoryboardResult,
+        settings: ExportSettings,
+        targetPreviewID: RenderedStoryboardPreview.ID
+    ) async {
+        await MainActor.run { [weak self] in
+            self?.model?.completeEditedFrames(
+                data: data,
+                result: result,
+                settings: settings,
+                targetPreviewID: targetPreviewID
+            )
+        }
+    }
+
+    func failEditedFrames(message: String) async {
+        await MainActor.run { [weak self] in
+            self?.model?.markFrameEditFailed(message)
+        }
+    }
+}
+
+private struct ManualFrameEditor: View {
+    @ObservedObject var model: StoryboardViewModel
+    let sourceURL: URL
+    let selectionLimit: Int
+    let language: AppLanguage
+    let onApply: ([CapturedFrame]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var candidates: [CapturedFrame] = []
+    @State private var selectedIDs = Set<Int>()
+    @State private var candidateBatch = 0
+    @State private var isLoadingCandidates = false
+    @State private var isSmartSelecting = false
+    @State private var captureToken = UUID()
+    @State private var captureError = ""
+    @State private var candidateSamplingTask: Task<[CapturedFrame], Error>?
+    @State private var candidatePresentationTask: Task<Void, Never>?
+    @State private var smartSelectionTask: Task<[Int], Never>?
+    @State private var smartSelectionPresentationTask: Task<Void, Never>?
+
+    private func t(_ key: String, _ arguments: CVarArg...) -> String {
+        language.text(key, arguments: arguments)
+    }
+
+    private var selectedFrames: [CapturedFrame] {
+        candidates
+            .filter { selectedIDs.contains($0.id) }
+            .sorted { $0.time < $1.time }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(t("editor.title"))
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
+                Text(t("editor.detail"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                GlyphLabel(title: t("editor.selectionCount", selectedIDs.count, selectionLimit), glyph: .selected)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(selectedIDs.count == selectionLimit ? .green : .secondary)
+                Spacer()
+                Button(action: smartSelectCandidates) {
+                    if isSmartSelecting {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        GlyphLabel(title: t("editor.smartSelect"), glyph: .wand)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.18, green: 0.54, blue: 0.78))
+                .disabled(isLoadingCandidates || candidates.isEmpty || isSmartSelecting)
+                .accessibilityIdentifier("manual-frame-smart-select")
+                Button(action: regenerateCandidates) {
+                    GlyphLabel(title: t("editor.regenerate"), glyph: .refresh)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isLoadingCandidates || isSmartSelecting)
+                .accessibilityIdentifier("manual-frame-regenerate")
+            }
+
+            ScrollView {
+                if isLoadingCandidates {
+                    ProgressView(t("editor.loading"))
+                        .frame(maxWidth: .infinity, minHeight: 360)
+                } else if candidates.isEmpty {
+                    VStack(spacing: 8) {
+                        ProjectIcon(symbol: .film, size: 28)
+                            .foregroundStyle(.secondary)
+                        Text(captureError.isEmpty ? t("editor.noPreview") : captureError)
+                            .font(.system(size: 12))
+                            .foregroundStyle(captureError.isEmpty ? Color.secondary : Color.red)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 360)
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 116), spacing: 8)], spacing: 8) {
+                        ForEach(candidates) { candidate in
+                            Button {
+                                toggle(candidate)
+                            } label: {
+                                frameImage(candidate)
+                                    .frame(height: 88)
+                                    .overlay(alignment: .bottomLeading) {
+                                        Text(TimestampFormatter.string(for: candidate.time))
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 3)
+                                            .foregroundStyle(.white)
+                                            .background(.black.opacity(0.65), in: Capsule())
+                                            .padding(5)
+                                    }
+                                    .overlay(alignment: .topTrailing) {
+                                        if selectedIDs.contains(candidate.id) {
+                                            ProjectIcon(symbol: .selected, size: 20)
+                                                .foregroundStyle(Color(red: 0.34, green: 0.84, blue: 0.92))
+                                                .shadow(color: .black.opacity(0.38), radius: 3)
+                                                .padding(5)
+                                        }
+                                    }
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .strokeBorder(
+                                                selectedIDs.contains(candidate.id)
+                                                    ? Color(red: 0.34, green: 0.84, blue: 0.92)
+                                                    : .white.opacity(0.10),
+                                                lineWidth: selectedIDs.contains(candidate.id) ? 3 : 1
+                                            )
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!selectedIDs.contains(candidate.id) && selectedIDs.count >= selectionLimit)
+                        }
+                    }
+                }
+            }
+            .frame(minHeight: 340, maxHeight: 450)
+            .accessibilityIdentifier("manual-frame-candidates")
+
+            HStack {
+                Button(t("editor.cancel"), role: .cancel) { dismiss() }
+                Spacer()
+                Button {
+                    onApply(selectedFrames)
+                    dismiss()
+                } label: {
+                    GlyphLabel(title: t("editor.apply"), glyph: .check)
+                        .font(.system(size: 13, weight: .bold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedIDs.count != selectionLimit || model.isApplyingFrameAdjustments)
+                .accessibilityIdentifier("manual-frame-apply")
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 820, minHeight: 610)
+        .accessibilityIdentifier("manual-frame-editor")
+        .onAppear { loadCandidates() }
+        .onDisappear(perform: cancelBackgroundWork)
+    }
+
+    @ViewBuilder
+    private func frameImage(_ frame: CapturedFrame) -> some View {
+        if let image = NSImage(data: frame.jpegData) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .aspectRatio(frame.aspectRatio, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(.quaternary)
+                .aspectRatio(frame.aspectRatio, contentMode: .fit)
+        }
+    }
+
+    private func toggle(_ candidate: CapturedFrame) {
+        if selectedIDs.contains(candidate.id) {
+            selectedIDs.remove(candidate.id)
+        } else if selectedIDs.count < selectionLimit {
+            selectedIDs.insert(candidate.id)
+        }
+    }
+
+    private func regenerateCandidates() {
+        candidateBatch += 1
+        selectedIDs.removeAll()
+        loadCandidates()
+    }
+
+    private func smartSelectCandidates() {
+        guard !candidates.isEmpty, !isSmartSelecting else { return }
+        let token = captureToken
+        let source = candidates
+        let targetCount = selectionLimit
+        isSmartSelecting = true
+
+        smartSelectionTask?.cancel()
+        smartSelectionPresentationTask?.cancel()
+        let selectionTask = Task.detached(priority: .userInitiated) {
+            ManualFrameSelector.selectIDs(from: source, count: targetCount)
+        }
+        smartSelectionTask = selectionTask
+        smartSelectionPresentationTask = Task {
+            let ids = await selectionTask.value
+            guard !Task.isCancelled, token == captureToken else { return }
+            selectedIDs = Set(ids)
+            isSmartSelecting = false
+            smartSelectionTask = nil
+            smartSelectionPresentationTask = nil
+        }
+    }
+
+    private func loadCandidates() {
+        candidateSamplingTask?.cancel()
+        candidatePresentationTask?.cancel()
+        let token = UUID()
+        captureToken = token
+        captureError = ""
+        isLoadingCandidates = true
+        isSmartSelecting = false
+        let outputWidth = model.width
+        let gridSide = max(1, Int(Double(selectionLimit).squareRoot().rounded()))
+        let requestedCount = min(72, max(24, selectionLimit * 3))
+        let batch = candidateBatch
+
+        // Sampling candidates may decode dozens of frames. Keep that work off the
+        // main actor so scrolling, selection and the progress state stay responsive.
+        let samplingTask = Task.detached(priority: .userInitiated) {
+            try await ManualFrameExtractor.captureCandidates(
+                from: sourceURL,
+                gridSide: gridSide,
+                outputWidth: outputWidth,
+                count: requestedCount,
+                batch: batch
+            )
+        }
+        candidateSamplingTask = samplingTask
+
+        candidatePresentationTask = Task {
+            do {
+                let frames = try await samplingTask.value
+                guard !Task.isCancelled, token == captureToken else { return }
+                candidates = frames
+            } catch {
+                guard !Task.isCancelled, token == captureToken else { return }
+                captureError = (error as? StoryboardError)?.message(in: language) ?? error.localizedDescription
+            }
+            guard !Task.isCancelled, token == captureToken else { return }
+            isLoadingCandidates = false
+            candidateSamplingTask = nil
+            candidatePresentationTask = nil
+        }
+    }
+
+    private func cancelBackgroundWork() {
+        captureToken = UUID()
+        candidateSamplingTask?.cancel()
+        candidatePresentationTask?.cancel()
+        smartSelectionTask?.cancel()
+        smartSelectionPresentationTask?.cancel()
     }
 }
 
@@ -738,8 +1333,7 @@ private struct ShotTesseraMark: View {
                     .scaledToFit()
                     .accessibilityLabel(language.text("app.icon.accessibility"))
             } else {
-                Image(systemName: "eye")
-                    .font(.system(size: 22, weight: .semibold))
+                ProjectIcon(symbol: .eye, size: 22)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.indigo, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -760,7 +1354,7 @@ private struct VideoBatchCard: View {
     let jobs: [VideoJob]
     let language: AppLanguage
     let isTargeted: Bool
-    let isProcessing: Bool
+    let isLocked: Bool
     let choose: () -> Void
     let clear: () -> Void
 
@@ -768,8 +1362,7 @@ private struct VideoBatchCard: View {
         VStack(alignment: .leading, spacing: 9) {
             Button(action: choose) {
                 HStack(spacing: 12) {
-                    Image(systemName: jobs.isEmpty ? "film.stack" : "film.fill")
-                        .font(.system(size: 19, weight: .medium))
+                    ProjectIcon(symbol: jobs.isEmpty ? .filmStack : .film, size: 19)
                         .foregroundStyle(Color(red: 0.42, green: 0.85, blue: 0.91))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title)
@@ -780,8 +1373,7 @@ private struct VideoBatchCard: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
+                    ProjectIcon(symbol: .plus, size: 14)
                         .foregroundStyle(.secondary)
                 }
                 .padding(15)
@@ -792,7 +1384,7 @@ private struct VideoBatchCard: View {
                 }
             }
             .buttonStyle(.plain)
-            .disabled(isProcessing)
+            .disabled(isLocked)
 
             if !jobs.isEmpty {
                 VStack(spacing: 5) {
@@ -810,21 +1402,47 @@ private struct VideoBatchCard: View {
                         .font(.system(size: 10, weight: .medium))
                     }
                     if jobs.count > 3 {
-                        Text(language.text("queue.more", jobs.count - 3))
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 8) {
+                            Text(language.text("queue.more", jobs.count - 3))
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            clearQueueButton
+                        }
                     }
                 }
                 .padding(.horizontal, 4)
 
-                Button(language.text("queue.clear"), action: clear)
-                    .font(.system(size: 11, weight: .medium))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .disabled(isProcessing)
+                if jobs.count <= 3 {
+                    HStack {
+                        Spacer()
+                        clearQueueButton
+                    }
+                    .padding(.horizontal, 4)
+                }
             }
         }
+    }
+
+    private var clearQueueButton: some View {
+        Button(action: clear) {
+            GlyphLabel(title: language.text("queue.clear"), glyph: .trash)
+                .font(.system(size: 10, weight: .bold))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .background(Color(red: 0.80, green: 0.18, blue: 0.24), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.22))
+        }
+        .shadow(color: Color.red.opacity(0.18), radius: 3, y: 1)
+        .help(language.text("queue.clear.hint"))
+        .disabled(isLocked)
     }
 
     private var title: String {
@@ -917,12 +1535,17 @@ private enum PreviewText {
     static let secondary = Color(red: 0.62, green: 0.76, blue: 0.91)
 }
 
+private enum SelectionPalette {
+    /// The single active-state color used by grid, format, and switch controls.
+    static let active = Color(red: 0.46, green: 0.87, blue: 0.88)
+}
+
 private struct GridChoiceStyle: ButtonStyle {
     let isSelected: Bool
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(isSelected ? Color(red: 0.06, green: 0.08, blue: 0.11) : .primary)
-            .background(isSelected ? Color(red: 0.46, green: 0.87, blue: 0.88) : Color.white.opacity(configuration.isPressed ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(isSelected ? SelectionPalette.active : Color.white.opacity(configuration.isPressed ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -944,10 +1567,49 @@ private struct ExportButtonStyle: ButtonStyle {
     }
 }
 
+private struct SavedResultButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color(red: 0.04, green: 0.11, blue: 0.16))
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 0.39, green: 0.86, blue: 0.89), Color(red: 0.50, green: 0.72, blue: 0.98)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ),
+                in: Capsule()
+            )
+            .overlay { Capsule().strokeBorder(.white.opacity(0.28)) }
+            .shadow(color: Color(red: 0.30, green: 0.75, blue: 0.94).opacity(0.24), radius: 10, y: 4)
+            .opacity(configuration.isPressed ? 0.78 : 1)
+    }
+}
+
+private struct ManualAdjustmentButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color(red: 0.88, green: 0.96, blue: 1.00))
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.10, green: 0.31, blue: 0.44),
+                        Color(red: 0.17, green: 0.27, blue: 0.51)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ),
+                in: Capsule()
+            )
+            .overlay { Capsule().strokeBorder(Color(red: 0.42, green: 0.84, blue: 0.96).opacity(0.72)) }
+            .shadow(color: Color(red: 0.25, green: 0.68, blue: 0.91).opacity(configuration.isPressed ? 0.08 : 0.18), radius: 8, y: 3)
+            .opacity(configuration.isPressed ? 0.80 : 1)
+    }
+}
+
 private extension View {
     func compactOptionSurface() -> some View {
         padding(.horizontal, 9)
-            .frame(height: 34)
+            .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
             .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)

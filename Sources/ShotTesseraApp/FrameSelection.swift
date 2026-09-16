@@ -68,7 +68,7 @@ enum FrameSelection {
         if unique.count < count {
             let orderedExtras = pool.sorted { $0.qualityScore > $1.qualityScore }
             for candidate in orderedExtras where unique.count < count {
-            let isDuplicate = unique.contains {
+                let isDuplicate = unique.contains {
                     isVisualDuplicate($0, candidate, strict: true)
                 }
                 if !isDuplicate { unique.append(candidate) }

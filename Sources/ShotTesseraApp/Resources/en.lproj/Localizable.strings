@@ -20,7 +20,6 @@
 "export.width.value" = "%d px";
 "export.time" = "Show time on tiles";
 "export.title" = "Show file title";
-"export.local.note" = "Follow applicable local laws.";
 "button.generate.single" = "Create Storyboard";
 "button.generate.batch" = "Create %d Storyboards";
 "button.cancel" = "Cancel";
@@ -28,7 +27,14 @@
 "accessibility.generate" = "Create storyboard";
 "accessibility.analyzing" = "Analysing video";
 "preview.title" = "Storyboard Preview";
+"preview.position" = "%d / %d";
 "button.saveas" = "Save as %@";
+"button.openSaved" = "Saved · Open Folder";
+"button.openSaved.hint" = "Show the most recently created image in Finder";
+"button.adjustFrames" = "Select frames manually";
+"button.adjustFrames.hint" = "Choose from candidate screenshots, then create the storyboard";
+"button.previousResult" = "Show previous storyboard";
+"button.nextResult" = "Show next storyboard";
 "status.processing" = "Video %d/%d · %@ · %d/%d frames captured";
 "status.empty" = "Choose or drop in multiple videos; they will be processed in order.";
 "default.video" = "Video";
@@ -39,6 +45,7 @@
 "status.cancelled" = "Creation cancelled.";
 "status.nowProcessing" = "Processing %@";
 "status.saved" = "Video %d/%d saved as %@.";
+"status.manualSaved" = "Saved as %@.";
 "status.generatedNotSaved" = "Video %d/%d was created but could not be saved automatically.";
 "status.failedContinue" = "Video %d could not be processed; continuing with the next one.";
 "status.batchCompleted" = "Batch complete: %d saved.";
@@ -48,7 +55,8 @@
 "job.completed" = "Saved";
 "job.failed" = "Failed";
 "queue.more" = "%d more videos waiting";
-"queue.clear" = "Clear Queue";
+"queue.clear" = "Clear queue";
+"queue.clear.hint" = "Remove all videos and the current preview";
 "video.add" = "Drop one or more videos";
 "video.added" = "%d videos added";
 "video.support" = "Supports MP4, MOV, MPEG, and more";
@@ -79,3 +87,12 @@
 "help.privacy" = "All processing stays on your Mac. Only process videos you are entitled to use, and follow applicable local laws.";
 "help.project" = "View Project on GitHub";
 "help.feedback" = "Report an Issue on GitHub";
+"editor.title" = "Select frames manually";
+"editor.detail" = "Select several candidate screenshots from different moments, then create the final storyboard. Fast smart selection remains the default.";
+"editor.loading" = "Reading frame…";
+"editor.noPreview" = "Move the time, then preview";
+"editor.apply" = "Apply and save";
+"editor.cancel" = "Cancel";
+"editor.selectionCount" = "%d / %d selected";
+"editor.smartSelect" = "Smart select";
+"editor.regenerate" = "New screenshots";

@@ -21,3 +21,14 @@ bodies, film sprockets, letters, and third-party marks.
 
 The icon was generated from an original art direction for this project and is
 distributed with the repository under its MIT license.
+
+## Interface pictograms
+
+Every interface pictogram is original geometry implemented in
+`Sources/ShotTesseraApp/ProjectIcon.swift`. The project does not bundle an
+icon font, an icon library, or SF Symbols. These source-drawn pictograms are
+part of the project and are available under the repository's MIT License,
+including commercial use, modification, and redistribution.
+
+This includes the create button's wand: it is a simple original line drawing,
+not a third-party asset or a copied trademarked symbol.

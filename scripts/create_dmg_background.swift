@@ -33,7 +33,7 @@ func cover(_ image: CIImage, in size: NSSize) -> CIImage {
 let canvasRect = CGRect(origin: .zero, size: canvasSize)
 let blurredSource = cover(sourceImage, in: canvasSize)
     .clampedToExtent()
-    .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 32])
+    .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 26])
     .cropped(to: canvasRect)
 let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 guard let backgroundCGImage = ciContext.createCGImage(blurredSource, from: canvasRect) else {
@@ -62,20 +62,39 @@ guard let graphicsContext = NSGraphicsContext.current?.cgContext else {
 }
 
 graphicsContext.draw(backgroundCGImage, in: canvasRect)
-NSColor(calibratedRed: 0.965, green: 0.970, blue: 0.980, alpha: 0.960).setFill()
+// A quiet, glassy surface keeps the reference imagery recognisable without
+// competing with Finder's real application and Applications icons.
+NSColor(calibratedRed: 0.955, green: 0.970, blue: 0.990, alpha: 0.875).setFill()
 NSBezierPath(rect: canvasRect).fill()
 
 let coolWash = NSGradient(colors: [
-    NSColor(calibratedRed: 0.34, green: 0.80, blue: 0.98, alpha: 0.048),
-    NSColor(calibratedRed: 0.56, green: 0.53, blue: 0.98, alpha: 0.022),
+    NSColor(calibratedRed: 0.27, green: 0.71, blue: 0.96, alpha: 0.13),
+    NSColor(calibratedRed: 0.55, green: 0.51, blue: 0.98, alpha: 0.075),
     NSColor.clear
 ])!
 coolWash.draw(
-    fromCenter: NSPoint(x: 640, y: 300),
+    fromCenter: NSPoint(x: 640, y: 338),
     radius: 0,
-    toCenter: NSPoint(x: 640, y: 300),
-    radius: 610,
+    toCenter: NSPoint(x: 640, y: 338),
+    radius: 690,
     options: [.drawsAfterEndingLocation]
+)
+
+func drawGlassCard(_ rect: NSRect, accent: NSColor) {
+    let path = NSBezierPath(roundedRect: rect, xRadius: 28, yRadius: 28)
+    NSColor.white.withAlphaComponent(0.34).setFill()
+    path.fill()
+    accent.withAlphaComponent(0.19).setStroke()
+    path.lineWidth = 1
+    path.stroke()
+}
+
+// The two panels frame the native Finder icons without replacing them. Their
+// positions match the layout written by package_dmg.sh below.
+drawGlassCard(NSRect(x: 126, y: 168, width: 388, height: 300), accent: .white)
+drawGlassCard(
+    NSRect(x: 766, y: 168, width: 388, height: 300),
+    accent: NSColor(calibratedRed: 0.25, green: 0.66, blue: 0.94, alpha: 1)
 )
 
 func drawText(
@@ -97,39 +116,48 @@ func drawText(
     ).draw(in: rect)
 }
 
-// Keep the header independent from Finder's icon labels: it identifies the
-// product while the two native icons below retain the entire installation flow.
+// The title stays separate from Finder's icon labels so the installation step
+// remains clear in any Finder language.
 drawText(
-    "视频一键截屏拼图",
-    in: NSRect(x: 104, y: 610, width: 1072, height: 42),
-    font: NSFont.systemFont(ofSize: 31, weight: .bold),
-    color: NSColor(calibratedRed: 0.14, green: 0.17, blue: 0.23, alpha: 0.96),
+    "ShotTessera for Mac",
+    in: NSRect(x: 104, y: 632, width: 1072, height: 24),
+    font: NSFont.systemFont(ofSize: 16, weight: .medium),
+    color: NSColor(calibratedRed: 0.20, green: 0.30, blue: 0.42, alpha: 0.70),
     alignment: .center
 )
 drawText(
-    "拖入“应用程序”完成安装",
-    in: NSRect(x: 104, y: 573, width: 1072, height: 24),
-    font: NSFont.systemFont(ofSize: 16, weight: .medium),
-    color: NSColor(calibratedRed: 0.31, green: 0.34, blue: 0.40, alpha: 0.64),
+    "把影片织成一张分镜图",
+    in: NSRect(x: 104, y: 581, width: 1072, height: 42),
+    font: NSFont.systemFont(ofSize: 30, weight: .bold),
+    color: NSColor(calibratedRed: 0.10, green: 0.16, blue: 0.25, alpha: 0.94),
     alignment: .center
 )
 
 drawText(
-    "适用于 Apple Silicon 与 Intel Mac · macOS 13 及以上版本",
-    in: NSRect(x: 104, y: 80, width: 1072, height: 20),
-    font: NSFont.systemFont(ofSize: 13, weight: .regular),
-    color: NSColor(calibratedRed: 0.31, green: 0.34, blue: 0.40, alpha: 0.48),
+    "将左侧应用拖入右侧“应用程序”即可安装",
+    in: NSRect(x: 104, y: 118, width: 1072, height: 24),
+    font: NSFont.systemFont(ofSize: 15, weight: .medium),
+    color: NSColor(calibratedRed: 0.18, green: 0.29, blue: 0.40, alpha: 0.70),
+    alignment: .center
+)
+drawText(
+    "支持 Apple Silicon 与 Intel Mac · macOS 13 及以上版本",
+    in: NSRect(x: 104, y: 75, width: 1072, height: 20),
+    font: NSFont.systemFont(ofSize: 12, weight: .regular),
+    color: NSColor(calibratedRed: 0.25, green: 0.33, blue: 0.43, alpha: 0.50),
     alignment: .center
 )
 
 let arrowPath = NSBezierPath()
-arrowPath.move(to: NSPoint(x: 607, y: 340))
-arrowPath.line(to: NSPoint(x: 655, y: 300))
-arrowPath.line(to: NSPoint(x: 607, y: 260))
-arrowPath.lineWidth = 10
+arrowPath.move(to: NSPoint(x: 588, y: 322))
+arrowPath.line(to: NSPoint(x: 642, y: 322))
+arrowPath.line(to: NSPoint(x: 626, y: 338))
+arrowPath.move(to: NSPoint(x: 642, y: 322))
+arrowPath.line(to: NSPoint(x: 626, y: 306))
+arrowPath.lineWidth = 8
 arrowPath.lineCapStyle = .round
 arrowPath.lineJoinStyle = .round
-NSColor(calibratedRed: 0.18, green: 0.21, blue: 0.27, alpha: 0.75).setStroke()
+NSColor(calibratedRed: 0.22, green: 0.58, blue: 0.86, alpha: 0.88).setStroke()
 arrowPath.stroke()
 
 NSGraphicsContext.restoreGraphicsState()

@@ -1,5 +1,7 @@
 import AppKit
+import AVFoundation
 import CoreText
+import CoreVideo
 import XCTest
 @testable import ShotTesseraApp
 
@@ -11,6 +13,19 @@ final class FrameSelectionTests: XCTestCase {
         let second = URL(fileURLWithPath: "/tmp/second.mp4")
         model.addVideos([first, second, first])
         XCTAssertEqual(model.videoJobs.map(\.url), [first, second])
+        XCTAssertFalse(model.showError)
+    }
+
+    @MainActor
+    func testQueueReportsOnlyActuallyUnsupportedFiles() {
+        let model = StoryboardViewModel()
+        model.addVideos([
+            URL(fileURLWithPath: "/tmp/first.mp4"),
+            URL(fileURLWithPath: "/tmp/readme.txt")
+        ])
+
+        XCTAssertEqual(model.videoJobs.map(\.url), [URL(fileURLWithPath: "/tmp/first.mp4")])
+        XCTAssertTrue(model.showError)
     }
 
     func testExportFilenameUsesShotSequence() {
@@ -28,6 +43,8 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(TimestampFormatter.string(for: 0), "00:00:00")
         XCTAssertEqual(TimestampFormatter.string(for: 83.9), "00:01:23")
         XCTAssertEqual(TimestampFormatter.string(for: 3_723), "01:02:03")
+        XCTAssertEqual(TimestampFormatter.string(for: .nan), "00:00:00")
+        XCTAssertEqual(TimestampFormatter.string(for: .infinity), "00:00:00")
     }
 
     func testEveryInAppLanguageHasAllRequiredTranslations() {
@@ -38,6 +55,16 @@ final class FrameSelectionTests: XCTestCase {
             XCTAssertFalse(language.text("status.processing", 1, 2, "sample.mp4", 3, 9).contains("%"))
             XCTAssertFalse(language.text("button.generate.batch", 2).contains("%"))
             XCTAssertFalse(language.text("button.saveas", "PNG").contains("%"))
+        }
+    }
+
+    func testStoryboardErrorsUseTheRequestedLanguage() {
+        let errors: [StoryboardError] = [.unreadableVideo, .unsupportedCodec, .noUsableFrames, .noExportData]
+        for language in AppLanguage.allCases {
+            for error in errors {
+                XCTAssertFalse(error.message(in: language).isEmpty)
+                XCTAssertFalse(error.message(in: language).hasPrefix("error."))
+            }
         }
     }
 
@@ -84,6 +111,70 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertNotEqual(plainData, titledData)
     }
 
+    func testImageCodecJPEGRoundTripPreservesDimensions() throws {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let context = try XCTUnwrap(
+            CGContext(
+                data: nil,
+                width: 37,
+                height: 19,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+        )
+        context.setFillColor(CGColor(red: 0.12, green: 0.46, blue: 0.78, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 37, height: 19))
+        let source = try XCTUnwrap(context.makeImage())
+
+        let encoded = try XCTUnwrap(ImageCodec.jpegData(from: source, compressionQuality: 0.88))
+        let decoded = try XCTUnwrap(ImageCodec.cgImage(from: encoded))
+
+        XCTAssertEqual(encoded.prefix(2), Data([0xFF, 0xD8]))
+        XCTAssertEqual(decoded.width, source.width)
+        XCTAssertEqual(decoded.height, source.height)
+    }
+
+    func testSyntheticH264VideoCompletesTheFullStoryboardPipeline() async throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ShotTesseraTests-\(UUID().uuidString)", isDirectory: true)
+        let sourceURL = temporaryDirectory.appendingPathComponent("synthetic.mov")
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        try await makeSyntheticVideo(at: sourceURL)
+        let result = try await VideoStoryboardAnalyzer().analyze(
+            videoURL: sourceURL,
+            gridSide: 3,
+            outputWidth: 1_920,
+            progress: { _ in },
+            onPreviewFrame: { _, _, _ in }
+        )
+
+        XCTAssertEqual(result.frames.count, 9)
+        XCTAssertTrue(result.duration.isFinite)
+        XCTAssertGreaterThan(result.duration, 0)
+
+        let outputData = try StoryboardComposer.render(
+            result: result,
+            settings: ExportSettings(gridSide: 3, format: .jpeg, width: 1_920, showTimestamps: true)
+        )
+        let image = try XCTUnwrap(ImageCodec.cgImage(from: outputData))
+        XCTAssertEqual(image.width, 1_920)
+        XCTAssertGreaterThan(image.height, 0)
+
+        let manualCandidates = try await ManualFrameExtractor.captureCandidates(
+            from: sourceURL,
+            gridSide: 3,
+            outputWidth: 1_920,
+            count: 18,
+            batch: 0
+        )
+        XCTAssertGreaterThanOrEqual(manualCandidates.count, 9)
+        XCTAssertEqual(ManualFrameSelector.selectIDs(from: manualCandidates, count: 9).count, 9)
+    }
+
     func testStoryboardAspectUsesTheSourceForPortraitAndSupportsCommonOverrides() {
         let portraitFrame = CapturedFrame(
             id: 0,
@@ -107,6 +198,48 @@ final class FrameSelectionTests: XCTestCase {
         settings.layoutAspect = .ultraWide
         let ultraWideSize = StoryboardComposer.canvasSize(result: result, settings: settings)
         XCTAssertGreaterThan(ultraWideSize.width, ultraWideSize.height * 2)
+    }
+
+    func testExtremePortraitExportStaysWithinTheBitmapMemoryBudget() {
+        let portraitFrame = CapturedFrame(
+            id: 0,
+            time: 0,
+            jpegData: Data(),
+            aspectRatio: 9.0 / 16.0
+        )
+        let result = StoryboardResult(
+            frames: [portraitFrame],
+            sourceURL: URL(fileURLWithPath: "/tmp/vertical.mp4")
+        )
+        let settings = ExportSettings(gridSide: 8, width: 12_000)
+        let canvas = StoryboardComposer.canvasSize(result: result, settings: settings)
+        let pixels = canvas.width * canvas.height
+
+        XCTAssertLessThanOrEqual(max(canvas.width, canvas.height), 16_384)
+        XCTAssertLessThanOrEqual(pixels, 64_000_000)
+    }
+
+    func testEveryGridWidthAndAspectStaysWithinTheBitmapBudget() {
+        let aspectRatios = [1.0 / 3.0, 9.0 / 16.0, 3.0 / 4.0, 1, 4.0 / 3.0, 16.0 / 9.0, 3]
+        let widths = [1_920, 2_560, 3_840, 5_120, 7_680, 12_000]
+
+        for gridSide in StoryboardGrid.availableSides {
+            for requestedWidth in widths {
+                for aspectRatio in aspectRatios {
+                    let result = StoryboardResult(
+                        frames: [CapturedFrame(id: 0, time: 0, jpegData: Data(), aspectRatio: aspectRatio)],
+                        sourceURL: URL(fileURLWithPath: "/tmp/layout-check.mp4")
+                    )
+                    let settings = ExportSettings(gridSide: gridSide, width: requestedWidth)
+                    let canvas = StoryboardComposer.canvasSize(result: result, settings: settings)
+                    let context = "grid=\(gridSide), width=\(requestedWidth), aspect=\(aspectRatio)"
+
+                    XCTAssertGreaterThanOrEqual(canvas.width, 1_920, context)
+                    XCTAssertLessThanOrEqual(max(canvas.width, canvas.height), 16_384, context)
+                    XCTAssertLessThanOrEqual(canvas.width * canvas.height, 64_000_000, context)
+                }
+            }
+        }
     }
 
     func testAspectChoicesCoverLandscapeSquareAndVerticalVideo() {
@@ -183,13 +316,47 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(FrameSelection.chooseFrames(from: [landscape, portrait], count: 1).first?.id, portrait.id)
     }
 
+    @MainActor
+    func testManualSmartSelectionFillsTheRequestedGridInTimeOrder() throws {
+        let candidates = try (0..<24).map { index -> CapturedFrame in
+            let image = NSImage(size: NSSize(width: 96, height: 54))
+            image.lockFocus()
+            NSColor(
+                calibratedRed: CGFloat(index % 5) / 5,
+                green: CGFloat((index * 2) % 7) / 7,
+                blue: CGFloat((index * 3) % 9) / 9,
+                alpha: 1
+            ).setFill()
+            NSBezierPath(rect: NSRect(x: 0, y: 0, width: 96, height: 54)).fill()
+            NSColor.white.withAlphaComponent(0.65).setStroke()
+            let stripe = NSBezierPath()
+            stripe.move(to: NSPoint(x: CGFloat((index * 7) % 90), y: 0))
+            stripe.line(to: NSPoint(x: CGFloat((index * 7) % 90 + 20), y: 54))
+            stripe.lineWidth = 3
+            stripe.stroke()
+            image.unlockFocus()
+            return CapturedFrame(
+                id: index,
+                time: Double(index) * 0.75,
+                jpegData: try XCTUnwrap(image.tiffRepresentation),
+                aspectRatio: 16.0 / 9.0
+            )
+        }
+
+        let selectedIDs = ManualFrameSelector.selectIDs(from: candidates, count: 9)
+        XCTAssertEqual(selectedIDs.count, 9)
+        XCTAssertEqual(Set(selectedIDs).count, 9)
+        let timeByID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0.time) })
+        XCTAssertEqual(selectedIDs, selectedIDs.sorted { timeByID[$0, default: 0] < timeByID[$1, default: 0] })
+    }
+
     private func frame(
         id: Int,
         time: Double,
         histogram: [Float],
         blackRatio: Float = 0.02,
         sharpness: Float = 0.22,
-        fingerprint: UInt64 = UInt64.random(in: 10...100_000)
+        fingerprint: UInt64? = nil
     ) -> FrameDescriptor {
         FrameDescriptor(
             id: id,
@@ -198,8 +365,105 @@ final class FrameSelectionTests: XCTestCase {
             luminance: 0.45,
             blackRatio: blackRatio,
             sharpness: sharpness,
-            fingerprint: fingerprint,
+            fingerprint: fingerprint ?? stableFingerprint(for: id),
             previewData: nil
         )
     }
+
+    private func stableFingerprint(for id: Int) -> UInt64 {
+        var value = UInt64(bitPattern: Int64(id)) &+ 0x9E37_79B9_7F4A_7C15
+        value = (value ^ (value >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        value = (value ^ (value >> 27)) &* 0x94D0_49BB_1331_11EB
+        return value ^ (value >> 31)
+    }
+
+    private func makeSyntheticVideo(at url: URL) async throws {
+        let width = 320
+        let height = 180
+        let frameRate: Int32 = 12
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: width,
+                AVVideoHeightKey: height
+            ]
+        )
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height
+            ]
+        )
+
+        guard writer.canAdd(input) else { throw SyntheticVideoError.cannotAddInput }
+        writer.add(input)
+        guard writer.startWriting() else { throw writer.error ?? SyntheticVideoError.cannotStartWriter }
+        writer.startSession(atSourceTime: .zero)
+
+        for frameIndex in 0..<36 {
+            while !input.isReadyForMoreMediaData {
+                try Task.checkCancellation()
+                try await Task.sleep(nanoseconds: 1_000_000)
+            }
+            let pixelBuffer = try makePixelBuffer(width: width, height: height, frameIndex: frameIndex)
+            let presentationTime = CMTime(value: CMTimeValue(frameIndex), timescale: frameRate)
+            guard adaptor.append(pixelBuffer, withPresentationTime: presentationTime) else {
+                throw writer.error ?? SyntheticVideoError.cannotAppendFrame
+            }
+        }
+
+        input.markAsFinished()
+        await writer.finishWriting()
+        guard writer.status == .completed else {
+            throw writer.error ?? SyntheticVideoError.cannotFinishWriter
+        }
+    }
+
+    private func makePixelBuffer(width: Int, height: Int, frameIndex: Int) throws -> CVPixelBuffer {
+        var optionalBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary,
+            &optionalBuffer
+        )
+        guard status == kCVReturnSuccess, let pixelBuffer = optionalBuffer else {
+            throw SyntheticVideoError.cannotCreatePixelBuffer
+        }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            throw SyntheticVideoError.cannotCreatePixelBuffer
+        }
+        let bytes = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = y * bytesPerRow + x * 4
+                let checker = ((x / 20) + (y / 20) + frameIndex / 3).isMultiple(of: 2)
+                bytes[offset] = UInt8(checker ? (frameIndex * 17) % 180 + 50 : 28)
+                bytes[offset + 1] = UInt8(checker ? 220 : (frameIndex * 29) % 170 + 55)
+                bytes[offset + 2] = UInt8(checker ? 245 : 74)
+                bytes[offset + 3] = 255
+            }
+        }
+        return pixelBuffer
+    }
+}
+
+private enum SyntheticVideoError: Error {
+    case cannotAddInput
+    case cannotStartWriter
+    case cannotAppendFrame
+    case cannotFinishWriter
+    case cannotCreatePixelBuffer
 }

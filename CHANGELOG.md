@@ -3,6 +3,26 @@
 All notable user-facing changes are recorded here. Stable releases remain
 available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/releases).
 
+## v0.2.3
+
+### 中文
+
+- 新增手动选择画面：可浏览候选截图、智能一键选帧，再按需微调后生成。
+- 批量结果支持左右切换；保存后可直接打开所在目录。
+- 优化批处理稳定性与大尺寸导出的内存保护。
+
+### English
+
+- Added manual frame selection: browse candidates, use Smart Select, then fine-tune before creating the storyboard.
+- Browse batch results with previous/next controls and open the saved image’s folder directly.
+- Improved batch reliability and memory protection for large exports.
+
+### 日本語
+
+- 手動フレーム選択を追加：候補を確認し、スマート選択後に調整してから生成できます。
+- バッチ結果を前後に切り替えられ、保存後は画像のフォルダを直接開けます。
+- バッチ処理の安定性と大きな出力時のメモリ保護を改善しました。
+
 ## v0.2.2 — Stable
 
 ### 中文

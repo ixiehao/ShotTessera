@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-      - name: Build release
-        run: swift build -c release
+      - name: Build universal release executable
+        run: swift build -c release --arch arm64 --arch x86_64
       - name: Run tests
         run: swift test

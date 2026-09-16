@@ -28,12 +28,17 @@ video URL
   -> Vision scores only promising JPEG candidates for faces and full-body people
   -> selected JPEGs stream to the live grid, then StoryboardComposer lays them out
      as rounded 16:9 cards
-  -> ImageIO writes the requested PNG or JPEG
+  -> the shared ImageCodec uses ImageIO for background decode/encode and writes
+     the requested PNG or JPEG
 ```
 
 `ExportSettings` constrains the grid to the UI's 3 x 3 through 8 x 8 choices
 and clamps exported width to at least 1920 px. Rendering uses CoreGraphics, so
 the final image is composed in memory without an intermediate image editor.
+Canvas allocation is capped at 64 megapixels and 16,384 pixels on either edge;
+large portrait exports are scaled down before allocation to keep peak memory
+reasonable on older Intel Macs. Rendering checks cooperative cancellation between
+cards so a cancelled batch can stop before encoding an obsolete result.
 All text rendered into exported images uses the bundled, unmodified Noto Sans
 CJK SC Bold 2.004 font. The font is registered only for the app process; its
 SIL Open Font License 1.1, source release, and checksum are retained in
@@ -49,6 +54,24 @@ score. When a video does not contain people or has too few detectable cuts,
 the selector gracefully falls back to good, time-distributed visual frames. A
 strict pass removes near duplicates; a final relaxed time-bucket pass is only
 used to fill every requested cell on sparse, long-shot source material.
+
+The optional manual editor samples a bounded second candidate set only when it is
+opened. Smart selection reuses the same visual metrics and duplicate rules, while
+the user can override any individual choice. Candidate and smart-selection tasks
+are cancelled when the editor closes. Each edit is tied to a stable preview ID so
+switching between batch results cannot overwrite the wrong storyboard.
+
+## Concurrency and compatibility
+
+Generation, frame analysis, manual sampling, and bitmap composition run outside
+the main actor. UI updates return through a run-ID-checked bridge; cancelling or
+starting a new batch invalidates late updates from older work. Swift concurrency
+is compiled in complete checking mode during release verification.
+
+The package deployment target is macOS 13. Release builds contain both `arm64`
+and `x86_64` slices and use only APIs available at that target. The automated
+suite includes a synthetic H.264 end-to-end test covering decode, selection,
+composition, JPEG export, manual candidate sampling, and smart selection.
 
 ## Known limits
 

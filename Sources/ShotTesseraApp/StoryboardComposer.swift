@@ -1,12 +1,10 @@
-import AppKit
 import CoreGraphics
 import CoreText
 import Foundation
-import ImageIO
-import UniformTypeIdentifiers
 
 enum StoryboardComposer {
     static func render(result: StoryboardResult, settings: ExportSettings) throws -> Data {
+        try Task.checkCancellation()
         let layout = makeLayout(
             requestedWidth: settings.safeWidth,
             gridSide: settings.gridSide,
@@ -31,6 +29,10 @@ enum StoryboardComposer {
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
         for cellIndex in 0..<(side * side) {
+            // Rendering a large 8 × 8 export can take noticeable time on an
+            // Intel Mac. Let a cancelled batch stop between cards instead of
+            // always completing a now-unneeded bitmap and encoder pass.
+            try Task.checkCancellation()
             let column = cellIndex % side
             let row = side - 1 - cellIndex / side
             let x = layout.margin + column * (layout.cellWidth + layout.gap)
@@ -50,16 +52,13 @@ enum StoryboardComposer {
             drawTitleWatermark(title, canvasSize: CGSize(width: width, height: height), context: context)
         }
 
+        try Task.checkCancellation()
         guard let image = context.makeImage() else { throw StoryboardError.noExportData }
-        let mutableData = NSMutableData()
-        let type: CFString = settings.format == .png ? UTType.png.identifier as CFString : UTType.jpeg.identifier as CFString
-        guard let destination = CGImageDestinationCreateWithData(mutableData, type, 1, nil) else {
+        try Task.checkCancellation()
+        guard let data = ImageCodec.data(from: image, format: settings.format, jpegCompressionQuality: 0.94) else {
             throw StoryboardError.noExportData
         }
-        let options: [CFString: Any] = settings.format == .jpeg ? [kCGImageDestinationLossyCompressionQuality: 0.94] : [:]
-        CGImageDestinationAddImage(destination, image, options as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else { throw StoryboardError.noExportData }
-        return mutableData as Data
+        return data
     }
 
     /// Keeps a high requested width for ordinary exports while putting a hard
@@ -82,21 +81,37 @@ enum StoryboardComposer {
     ) -> StoryboardLayout {
         let safeSide = max(1, gridSide)
         let safeRatio = max(1.0 / 3.0, min(3, cardAspectRatio))
-        let initial = StoryboardLayout(width: requestedWidth, gridSide: safeSide, cardAspectRatio: safeRatio)
+        // A bitmap context needs four bytes per pixel before ImageIO creates its
+        // encoded data. 64 MP keeps the working bitmap near 244 MiB rather than
+        // allowing a 12,000 px portrait contact sheet to exceed 400 MiB. This is
+        // especially important on 8 GB Intel Macs where the image, JPEG buffers
+        // and Vision thumbnails may coexist.
         let maxDimension = 16_384.0
-        let maxPixels = 100_000_000.0
-        let pixelCount = Double(initial.width * initial.height)
-        let scale = min(
-            1,
-            maxDimension / Double(max(initial.width, initial.height)),
-            sqrt(maxPixels / max(1, pixelCount))
-        )
-        guard scale < 0.999 else { return initial }
-        return StoryboardLayout(
-            width: max(1_920, Int((Double(requestedWidth) * scale).rounded(.down))),
-            gridSide: safeSide,
-            cardAspectRatio: safeRatio
-        )
+        let maxPixels = 64_000_000.0
+        var width = requestedWidth
+
+        // Margins and integer cell sizes are recalculated after scaling, so one
+        // pass can land fractionally over the budget. Re-evaluate the resulting
+        // layout to keep the advertised dimension and memory limits real.
+        for _ in 0..<8 {
+            let layout = StoryboardLayout(width: width, gridSide: safeSide, cardAspectRatio: safeRatio)
+            let pixelCount = Double(layout.width) * Double(layout.height)
+            let scale = min(
+                1,
+                maxDimension / Double(max(layout.width, layout.height)),
+                sqrt(maxPixels / max(1, pixelCount))
+            )
+            // Any overage, however small, matters for a hard bitmap-memory cap.
+            guard scale < 1 else { return layout }
+
+            // Force at least a one-pixel reduction while above budget. Without
+            // this, a near-1 scale can round back to the same width forever.
+            let scaledWidth = Int((Double(width) * scale).rounded(.down))
+            let nextWidth = max(1_920, min(width - 1, scaledWidth))
+            guard nextWidth < width else { return layout }
+            width = nextWidth
+        }
+        return StoryboardLayout(width: width, gridSide: safeSide, cardAspectRatio: safeRatio)
     }
 
     private static func drawCard(
@@ -112,7 +127,7 @@ enum StoryboardComposer {
         context.addPath(cardPath)
         context.fillPath()
 
-        guard let imageData, let image = NSImage(data: imageData)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        guard let imageData, let image = ImageCodec.cgImage(from: imageData) else { return }
         context.saveGState()
         context.addPath(cardPath)
         context.clip()

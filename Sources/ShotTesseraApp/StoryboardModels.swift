@@ -96,6 +96,7 @@ struct ExportSettings: Sendable {
 
 enum TimestampFormatter {
     static func string(for seconds: Double) -> String {
+        guard seconds.isFinite else { return "00:00:00" }
         let totalSeconds = max(0, Int(seconds.rounded(.down)))
         let hours = totalSeconds / 3_600
         let minutes = (totalSeconds % 3_600) / 60
@@ -199,6 +200,15 @@ struct CapturedFrame: Sendable, Identifiable {
 struct StoryboardResult: Sendable {
     let frames: [CapturedFrame]
     let sourceURL: URL
+    /// Kept with the selected frames so the lightweight manual adjuster can seek
+    /// to a user-chosen moment without rescanning the whole movie.
+    let duration: Double
+
+    init(frames: [CapturedFrame], sourceURL: URL, duration: Double = 0) {
+        self.frames = frames
+        self.sourceURL = sourceURL
+        self.duration = duration
+    }
 }
 
 enum StoryboardError: LocalizedError {

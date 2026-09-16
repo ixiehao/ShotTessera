@@ -20,7 +20,6 @@
 "export.width.value" = "%d px";
 "export.time" = "小图显示时间";
 "export.title" = "显示文件标题";
-"export.local.note" = "请遵守当地法律。";
 "button.generate.single" = "一键生成分镜图";
 "button.generate.batch" = "批量生成 %d 部分镜图";
 "button.cancel" = "取消生成";
@@ -28,7 +27,14 @@
 "accessibility.generate" = "一键生成分镜图";
 "accessibility.analyzing" = "正在分析影片";
 "preview.title" = "分镜预览";
+"preview.position" = "%d / %d";
 "button.saveas" = "另存为 %@";
+"button.openSaved" = "已保存 · 打开目录";
+"button.openSaved.hint" = "在 Finder 中显示刚生成的图片";
+"button.adjustFrames" = "手动选择画面";
+"button.adjustFrames.hint" = "从不同时间点的候选截图中多选，选满后生成分镜图";
+"button.previousResult" = "查看上一部影片的分镜图";
+"button.nextResult" = "查看下一部影片的分镜图";
 "status.processing" = "第 %d/%d 部 · %@ · 已截取 %d/%d 张";
 "status.empty" = "可选择或拖入多个视频，随后按队列自动处理。";
 "default.video" = "视频";
@@ -39,6 +45,7 @@
 "status.cancelled" = "已取消生成。";
 "status.nowProcessing" = "正在处理 %@";
 "status.saved" = "第 %d/%d 部已保存为 %@。";
+"status.manualSaved" = "已保存为 %@。";
 "status.generatedNotSaved" = "第 %d/%d 部已生成，但未能自动保存。";
 "status.failedContinue" = "第 %d 部无法处理，继续下一部。";
 "status.batchCompleted" = "批量处理完成：已保存 %d 部。";
@@ -49,6 +56,7 @@
 "job.failed" = "失败";
 "queue.more" = "另有 %d 部影片等待处理";
 "queue.clear" = "清空队列";
+"queue.clear.hint" = "移除当前所有影片与预览结果";
 "video.add" = "拖入一个或多个视频";
 "video.added" = "已添加 %d 部影片";
 "video.support" = "支持 MP4、MOV、MPEG 等";
@@ -79,3 +87,12 @@
 "help.privacy" = "所有处理均在本机进行。请仅处理有权使用的视频，并遵守当地法律。";
 "help.project" = "在 GitHub 查看项目";
 "help.feedback" = "在 GitHub 反馈问题";
+"editor.title" = "手动选择画面";
+"editor.detail" = "从不同时间点的候选截图中多选，选满后生成最终分镜。默认智能选帧不会因此变慢。";
+"editor.loading" = "正在读取画面…";
+"editor.noPreview" = "移动时间后预览";
+"editor.apply" = "应用并保存";
+"editor.cancel" = "取消";
+"editor.selectionCount" = "已选 %d / %d 张";
+"editor.smartSelect" = "智能选择";
+"editor.regenerate" = "换一批截图";

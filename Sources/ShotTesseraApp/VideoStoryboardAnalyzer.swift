@@ -1,10 +1,11 @@
-import AppKit
 import AVFoundation
 import CoreGraphics
 import Foundation
 import Vision
 
-final class VideoStoryboardAnalyzer: @unchecked Sendable {
+/// Stateless analysis worker. Keeping this as a value type lets Swift verify
+/// that it is safe to pass into the detached generation task.
+struct VideoStoryboardAnalyzer: Sendable {
     // The analysis thumbnail is also the storyboard source. Reusing it avoids a
     // second random-access decode pass after selection, which is the slowest part
     // of many H.264/HEVC files.
@@ -41,22 +42,31 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         while time < duration {
             try Task.checkCancellation()
             defer { time += interval; index += 1 }
-            guard let image = try? analysisGenerator.copyCGImage(at: CMTime(seconds: time, preferredTimescale: 600), actualTime: nil) else {
-                continue
+            // Image decoding and metric buffers can accumulate across a long
+            // batch. Keep each pass scoped so memory remains stable on both
+            // Intel and Apple Silicon Macs.
+            let descriptor: FrameDescriptor? = autoreleasepool {
+                guard let image = try? analysisGenerator.copyCGImage(
+                    at: CMTime(seconds: time, preferredTimescale: 600),
+                    actualTime: nil
+                ), let previewData = ImageCodec.jpegData(from: image, compressionQuality: 0.88) else {
+                    return nil
+                }
+                let metrics = PixelMetrics.make(from: image)
+                var descriptor = FrameDescriptor(
+                    id: index,
+                    time: time,
+                    histogram: metrics.histogram,
+                    luminance: metrics.luminance,
+                    blackRatio: metrics.blackRatio,
+                    sharpness: metrics.sharpness,
+                    fingerprint: metrics.fingerprint,
+                    previewData: previewData
+                )
+                descriptor.aspectRatio = image.height > 0 ? Double(image.width) / Double(image.height) : (16.0 / 9.0)
+                return descriptor
             }
-            guard let previewData = jpegData(from: image) else { continue }
-            let metrics = PixelMetrics.make(from: image)
-            var descriptor = FrameDescriptor(
-                id: index,
-                time: time,
-                histogram: metrics.histogram,
-                luminance: metrics.luminance,
-                blackRatio: metrics.blackRatio,
-                sharpness: metrics.sharpness,
-                fingerprint: metrics.fingerprint,
-                previewData: previewData
-            )
-            descriptor.aspectRatio = image.height > 0 ? Double(image.width) / Double(image.height) : (16.0 / 9.0)
+            guard let descriptor else { continue }
             descriptors.append(descriptor)
             progress(0.05 + 0.53 * min(1, time / duration))
         }
@@ -73,10 +83,13 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         var scoreByID: [Int: Float] = [:]
         for (offset, candidate) in visionCandidates.enumerated() {
             try Task.checkCancellation()
-            guard let image = cgImage(from: candidate.previewData) else {
-                continue
+            let score: Float? = autoreleasepool {
+                guard let data = candidate.previewData, let image = ImageCodec.cgImage(from: data) else { return nil }
+                return peopleScore(in: visionPreview(from: image))
             }
-            scoreByID[candidate.id] = peopleScore(in: visionPreview(from: image))
+            if let score {
+                scoreByID[candidate.id] = score
+            }
             progress(0.58 + 0.14 * Double(offset + 1) / Double(visionCandidates.count))
         }
         descriptors = descriptors.map { descriptor in
@@ -102,10 +115,9 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
             captured.append(frame)
             onPreviewFrame(frame, captured.count, selected.count)
             progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))
-            // Keep the preview visibly progressive without adding a perceptible
-            // wait: roughly half a second for a complete grid.
-            let revealDelay = UInt64(max(8, min(35, 560 / max(1, selected.count)))) * 1_000_000
-            try await Task.sleep(nanoseconds: revealDelay)
+            // Yield so the main actor can present progressive cards, but do not
+            // add an artificial half-second delay to every video in a batch.
+            await Task.yield()
         }
 
         guard !captured.isEmpty else { throw StoryboardError.noUsableFrames }
@@ -121,7 +133,7 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
             }
         }
         progress(1)
-        return StoryboardResult(frames: captured, sourceURL: videoURL)
+        return StoryboardResult(frames: captured, sourceURL: videoURL, duration: duration)
     }
 
     private func imageGenerator(asset: AVAsset, maximumEdge: CGFloat) -> AVAssetImageGenerator {
@@ -140,15 +152,6 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
         let estimatedCellWidth = Double(max(1920, outputWidth)) / Double(gridSide)
         let desiredEdge = CGFloat(estimatedCellWidth * 1.15)
         return min(maximumAnalysisEdge, max(minimumAnalysisEdge, desiredEdge))
-    }
-
-    private func jpegData(from image: CGImage) -> Data? {
-        NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.88])
-    }
-
-    private func cgImage(from data: Data?) -> CGImage? {
-        guard let data, let image = NSImage(data: data) else { return nil }
-        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
     private func peopleCandidates(from descriptors: [FrameDescriptor], count: Int) -> [FrameDescriptor] {
@@ -213,7 +216,9 @@ final class VideoStoryboardAnalyzer: @unchecked Sendable {
     }
 }
 
-private struct PixelMetrics {
+/// Compact visual metrics shared by automatic analysis and manual candidate
+/// selection. They remain low-resolution so interactive selection stays fast.
+struct PixelMetrics {
     let histogram: [Float]
     let luminance: Float
     let blackRatio: Float
