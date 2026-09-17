@@ -108,6 +108,11 @@
 "help.privacy" = "所有处理均在本机进行。请仅处理有权使用的视频，并遵守当地法律。";
 "help.project" = "在 GitHub 查看项目";
 "help.feedback" = "在 GitHub 反馈问题";
+"update.available" = "有新版本啦：%@";
+"update.about.available" = "有新版本啦：%@";
+"update.menu.available" = "有新版本啦 · 下载 %@";
+"update.menu.check" = "检查更新…";
+"button.downloadUpdate" = "去下载";
 "editor.title" = "手动选择画面";
 "editor.detail" = "从不同时间点的候选截图中多选，选满后生成最终分镜。默认智能选帧不会因此变慢。";
 "editor.loading" = "正在读取画面…";

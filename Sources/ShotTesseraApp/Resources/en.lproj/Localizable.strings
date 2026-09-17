@@ -108,6 +108,11 @@
 "help.privacy" = "All processing stays on your Mac. Only process videos you are entitled to use, and follow applicable local laws.";
 "help.project" = "View Project on GitHub";
 "help.feedback" = "Report an Issue on GitHub";
+"update.available" = "A new version is available: %@";
+"update.about.available" = "A new version is available: %@";
+"update.menu.available" = "New version · Download %@";
+"update.menu.check" = "Check for Updates…";
+"button.downloadUpdate" = "Download";
 "editor.title" = "Select frames manually";
 "editor.detail" = "Select several candidate screenshots from different moments, then create the final storyboard. Fast smart selection remains the default.";
 "editor.loading" = "Reading frame…";

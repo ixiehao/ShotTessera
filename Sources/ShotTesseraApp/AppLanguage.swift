@@ -42,7 +42,8 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "about.feedback", "about.privacy", "about.license", "help.menu", "help.title", "help.intro",
         "help.step.add.title", "help.step.add.detail", "help.step.settings.title", "help.step.settings.detail",
         "help.step.create.title", "help.step.create.detail", "help.troubleshoot.title", "help.troubleshoot.detail",
-        "help.privacy", "help.project", "help.feedback", "editor.title", "editor.detail", "editor.loading",
+        "help.privacy", "help.project", "help.feedback", "update.available", "update.about.available", "update.menu.available",
+        "update.menu.check", "button.downloadUpdate", "editor.title", "editor.detail", "editor.loading",
         "editor.noPreview", "editor.apply",
         "editor.cancel", "editor.selectionCount", "editor.smartSelect", "editor.regenerate",
         "failureReport.title", "failureReport.detail", "failureReport.unknown"

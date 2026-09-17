@@ -87,6 +87,13 @@ final class FrameSelectionTests: XCTestCase {
         }
     }
 
+    func testReleaseVersionComparesNumericTagsAndRejectsInvalidTags() {
+        XCTAssertLessThan(tryVersion("v0.2.4"), tryVersion("v0.2.10"))
+        XCTAssertLessThan(tryVersion("1.0.0"), tryVersion("v1.0.1"))
+        XCTAssertNil(ReleaseVersion(tag: "v1.2"))
+        XCTAssertNil(ReleaseVersion(tag: "preview"))
+    }
+
     func testStoryboardErrorsUseTheRequestedLanguage() {
         let errors: [StoryboardError] = [.unreadableVideo, .unsupportedCodec, .noUsableFrames, .noExportData]
         for language in AppLanguage.allCases {
@@ -397,6 +404,14 @@ final class FrameSelectionTests: XCTestCase {
             fingerprint: fingerprint ?? stableFingerprint(for: id),
             previewData: nil
         )
+    }
+
+    private func tryVersion(_ tag: String) -> ReleaseVersion {
+        guard let version = ReleaseVersion(tag: tag) else {
+            XCTFail("Expected a valid release tag: \(tag)")
+            return ReleaseVersion(tag: "0.0.0")!
+        }
+        return version
     }
 
     private func stableFingerprint(for id: Int) -> UInt64 {

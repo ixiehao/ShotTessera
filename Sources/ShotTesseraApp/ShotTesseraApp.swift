@@ -7,7 +7,7 @@ private enum ProjectLinks {
 }
 
 private enum AboutCredits {
-    static func make(language: AppLanguage) -> NSAttributedString {
+    static func make(language: AppLanguage, availableUpdate: AvailableUpdate?) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.paragraphSpacing = 5
@@ -38,6 +38,10 @@ private enum AboutCredits {
         appendBody("\(language.text("about.developer")) · xao\n")
         appendLink("github.com/ixiehao/ShotTessera\n", destination: ProjectLinks.repository)
         appendLink(language.text("about.feedback"), destination: ProjectLinks.issues)
+        if let availableUpdate {
+            appendBody("\n\n\(language.text("update.about.available", availableUpdate.version))\n")
+            appendLink(language.text("button.downloadUpdate"), destination: availableUpdate.downloadURL)
+        }
         appendBody("\n\n\(language.text("about.privacy"))\n\(language.text("about.license"))")
         return credits
     }
@@ -70,6 +74,7 @@ private struct HelpStep: View {
 
 private struct HelpPanel: View {
     let language: AppLanguage
+    @ObservedObject var updateChecker: UpdateChecker
 
     private func t(_ key: String) -> String {
         language.text(key)
@@ -100,6 +105,12 @@ private struct HelpPanel: View {
             }
 
             Divider()
+
+            if updateChecker.hasUpdate {
+                UpdateAvailableBanner(checker: updateChecker, language: language)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                Divider()
+            }
 
             VStack(alignment: .leading, spacing: 14) {
                 HelpStep(index: "1", title: t("help.step.add.title"), detail: t("help.step.add.detail"))
@@ -164,15 +175,15 @@ final class ShotTesseraAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    func showAboutPanel(language: AppLanguage) {
+    func showAboutPanel(language: AppLanguage, updateChecker: UpdateChecker) {
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
-            .credits: AboutCredits.make(language: language)
+            .credits: AboutCredits.make(language: language, availableUpdate: updateChecker.availableUpdate)
         ])
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
     @MainActor
-    func showHelpPanel(language: AppLanguage) {
+    func showHelpPanel(language: AppLanguage, updateChecker: UpdateChecker) {
         let window: NSWindow
         if let existingWindow = helpWindow {
             window = existingWindow
@@ -189,7 +200,7 @@ final class ShotTesseraAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         window.title = language.text("help.title")
-        window.contentView = NSHostingView(rootView: HelpPanel(language: language))
+        window.contentView = NSHostingView(rootView: HelpPanel(language: language, updateChecker: updateChecker))
         NSApplication.shared.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
@@ -199,6 +210,7 @@ final class ShotTesseraAppDelegate: NSObject, NSApplicationDelegate {
 struct ShotTesseraApp: App {
     @NSApplicationDelegateAdaptor(ShotTesseraAppDelegate.self) private var appDelegate
     @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
+    @StateObject private var updateChecker = UpdateChecker()
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .chinese
@@ -214,6 +226,7 @@ struct ShotTesseraApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(updateChecker)
                 .frame(minWidth: 940, minHeight: 700)
         }
         .windowStyle(.hiddenTitleBar)
@@ -221,13 +234,21 @@ struct ShotTesseraApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button(language.text("about.menu")) {
-                    appDelegate.showAboutPanel(language: language)
+                    appDelegate.showAboutPanel(language: language, updateChecker: updateChecker)
                 }
             }
 
             CommandGroup(replacing: .help) {
                 Button(language.text("help.menu")) {
-                    appDelegate.showHelpPanel(language: language)
+                    appDelegate.showHelpPanel(language: language, updateChecker: updateChecker)
+                }
+                Divider()
+                Button(updateChecker.hasUpdate ? language.text("update.menu.available", updateChecker.availableUpdate?.version ?? "") : language.text("update.menu.check")) {
+                    if updateChecker.hasUpdate {
+                        updateChecker.openDownloadPage()
+                    } else {
+                        Task { await updateChecker.checkForUpdate(force: true) }
+                    }
                 }
                 Divider()
                 Button(language.text("help.project")) {

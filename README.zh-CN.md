@@ -10,7 +10,7 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 
 项目名称为 **视频一键截屏拼图**，适合搜索“视频截图拼图”“视频一键截图”“分镜图生成器”“视频九宫格截图”“视频联系表”等关键词。
 
-> **最新版：**[v0.2.4 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.4) · macOS 13+ · Apple Silicon 与 Intel Mac
+> **最新版：**[v0.2.5 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.5) · macOS 13+ · Apple Silicon 与 Intel Mac
 
 ## 一张图看懂功能
 
@@ -31,7 +31,7 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 - 可在应用顶部切换中文、英文、日语界面；选择会被记住。
 - 输出自动保存到视频同目录，命名为 `视频名-shot-001.ext`，序号会安全递增。
 
-所有分析和导出均在本机完成。项目不包含账号、遥测、网络请求、云上传、Electron、FFmpeg 或 Python 运行时。
+所有分析和导出均在本机完成。项目不包含账号、遥测、云上传、Electron、FFmpeg 或 Python 运行时；可选的更新检查只读取 GitHub 公开版本信息，不会上传视频或使用数据。
 
 ## 下载
 
@@ -63,7 +63,7 @@ brew install --cask ixiehao/tap/shottessera
 ## 权利与归属
 
 - 本仓库中的 Swift 源码、文档和 Tessera Iris 图标均为本项目原创内容，按 [MIT License](LICENSE) 发布。
-- 应用只使用 Apple SDK 框架；未包含第三方应用代码、依赖包、分析 SDK、网络客户端或 MoviePrint 的素材。
+- 应用只使用 Apple SDK 框架；未包含第三方应用代码、依赖包、分析 SDK 或 MoviePrint 的素材。更新检查仅访问 GitHub 公开版本接口。
 - 导出的标题使用随应用打包的 **Noto Sans CJK SC Bold 2.004**。该字体保持原样，采用 **SIL Open Font License 1.1**，可随商业软件嵌入与再发布；完整归属、版本和校验值见 [NOTICE.md](NOTICE.md) 与 [字体许可证](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt)。
 - 视频本身及其中已有的字幕、商标、水印和音乐等权利仍归相关权利人所有。生成分镜图并不授予发布或再分发权限。
 - 请遵守适用的当地法律，并仅处理你拥有或获授权处理的视频。

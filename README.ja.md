@@ -10,7 +10,7 @@ ShotTessera は、動画から代表的なフレームを選び、一枚の見�
 
 別名は **视频一键截屏拼图** です。動画スクリーンショット、動画コンタクトシート、絵コンテ作成、動画フレーム抽出のための macOS ツールとして検索できます。
 
-> **最新リリース：**[v0.2.4 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.4) · macOS 13 以降 · Apple Silicon / Intel Mac
+> **最新リリース：**[v0.2.5 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.5) · macOS 13 以降 · Apple Silicon / Intel Mac
 
 ## 一枚で分かる仕組み
 
@@ -31,7 +31,7 @@ ShotTessera は、動画から代表的なフレームを選び、一枚の見�
 - アプリ上部から中文・English・日本語の表示を切り替えられ、選択は記憶されます。
 - 出力は動画と同じフォルダに `動画名-shot-001.ext` の形式で保存され、番号は安全に連番になります。
 
-解析と書き出しはすべてローカルで行われます。アカウント、テレメトリー、ネットワーク通信、クラウドアップロード、Electron、FFmpeg、Python ランタイムは含まれません。
+解析と書き出しはすべてローカルで行われます。アカウント、テレメトリー、クラウドアップロード、Electron、FFmpeg、Python ランタイムは含まれません。任意の更新確認は GitHub の公開リリース情報のみを読み取り、動画や利用データを送信しません。
 
 ## ダウンロード
 
@@ -63,7 +63,7 @@ brew install --cask ixiehao/tap/shottessera
 ## 権利と帰属
 
 - このリポジトリの Swift ソース、文書、Tessera Iris アイコンは本プロジェクトのオリジナルであり、[MIT License](LICENSE) で公開されています。
-- アプリは Apple SDK フレームワークだけを使用し、第三者のアプリケーションコード、パッケージ、分析 SDK、ネットワーククライアント、MoviePrint の素材を含みません。
+- アプリは Apple SDK フレームワークだけを使用し、第三者のアプリケーションコード、パッケージ、分析 SDK、MoviePrint の素材を含みません。更新確認は GitHub の公開リリース API のみを使用します。
 - タイトルには同梱の **Noto Sans CJK SC Bold 2.004** を使用します。このフォントは改変せずに **SIL Open Font License 1.1** の下で配布され、商用ソフトウェアへの埋め込みと再配布が可能です。帰属、版、ハッシュは [NOTICE.md](NOTICE.md)、完全なライセンスは [こちら](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt) を参照してください。
 - 動画そのもの、動画内の字幕、商標、透かし、音楽などの権利は各権利者に帰属します。絵コンテの生成は公開または再配布の権利を付与しません。
 - 適用される現地の法令を守り、あなたが所有する、または処理する権限のある動画だけを扱ってください。

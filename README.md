@@ -8,7 +8,7 @@
 
 **Smart selection first. Fine-tune any frame. Export entirely locally.**
 
-> **Latest release:** [v0.2.4 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.4) · macOS 13+ · Apple Silicon and Intel
+> **Latest release:** [v0.2.5 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.5) · macOS 13+ · Apple Silicon and Intel
 
 ## Download
 
@@ -55,7 +55,7 @@ To remove it later, quit the app and move only `视频一键截屏拼图.app` fr
 
 ## Private by design
 
-All frame analysis and export happen on your Mac. ShotTessera has no account, telemetry, network client, cloud upload, Electron, FFmpeg, or Python runtime.
+All frame analysis and export happen on your Mac. ShotTessera has no account, telemetry, cloud upload, Electron, FFmpeg, or Python runtime. Its optional update check reads only public GitHub release metadata; it never sends video or usage data.
 
 ## License
 

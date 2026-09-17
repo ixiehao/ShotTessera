@@ -108,6 +108,11 @@
 "help.privacy" = "すべての処理はこの Mac 上で行われます。利用権限のある動画だけを扱い、適用される現地の法令を守ってください。";
 "help.project" = "GitHub でプロジェクトを見る";
 "help.feedback" = "GitHub で問題を報告";
+"update.available" = "新しいバージョンがあります：%@";
+"update.about.available" = "新しいバージョンがあります：%@";
+"update.menu.available" = "新バージョン · %@ をダウンロード";
+"update.menu.check" = "アップデートを確認…";
+"button.downloadUpdate" = "ダウンロード";
 "editor.title" = "手動でコマを選択";
 "editor.detail" = "異なる時刻の候補から複数選び、そろったら最終の絵コンテを作成します。通常の高速自動選択には影響しません。";
 "editor.loading" = "画面を読み込み中…";

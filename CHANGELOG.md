@@ -3,6 +3,23 @@
 All notable user-facing changes are recorded here. Stable releases remain
 available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/releases).
 
+## v0.2.5
+
+### 中文
+
+- 新增 GitHub 更新提醒：主界面、关于与帮助均可直接前往下载新版本。
+- 更新检查仅读取公开版本信息，不上传视频或使用数据。
+
+### English
+
+- Added GitHub update reminders in the main window, About panel, and Help menu.
+- Update checks read public release metadata only; no video or usage data is sent.
+
+### 日本語
+
+- メイン画面、情報画面、ヘルプメニューに GitHub の更新通知を追加しました。
+- 更新確認は公開リリース情報のみを読み取り、動画や利用データを送信しません。
+
 ## v0.2.4
 
 ### 中文

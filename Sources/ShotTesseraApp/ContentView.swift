@@ -12,6 +12,7 @@ private struct ManualFrameEditorRequest: Identifiable {
 
 struct ContentView: View {
     @StateObject private var model = StoryboardViewModel()
+    @EnvironmentObject private var updateChecker: UpdateChecker
     @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
     @State private var isLanguagePickerPresented = false
     @State private var isAspectPickerPresented = false
@@ -39,20 +40,31 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
 
-            HStack(spacing: 28) {
-                controlPanel
-                    .frame(width: 332)
-                previewPanel
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                UpdateAvailableBanner(checker: updateChecker, language: language)
+                    .padding(.top, 10)
+                    .padding(.trailing, 150)
+                    .frame(height: updateChecker.hasUpdate ? 48 : 0)
+
+                HStack(spacing: 28) {
+                    controlPanel
+                        .frame(width: 332)
+                    previewPanel
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .padding(30)
+                .padding(.top, updateChecker.hasUpdate ? 0 : 18)
             }
-            .padding(30)
 
             languageMenu
                 .padding(.top, 18)
                 .padding(.trailing, 22)
         }
         .environment(\.locale, language.locale)
-        .onAppear { model.language = language }
+        .onAppear {
+            model.language = language
+            Task { await updateChecker.checkForUpdate() }
+        }
         .onChange(of: languageCode) { newValue in
             model.language = AppLanguage(rawValue: newValue) ?? .chinese
         }
