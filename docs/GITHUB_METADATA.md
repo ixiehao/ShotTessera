@@ -16,12 +16,11 @@ social preview. Keep the public metadata below aligned with the stable release.
 
 ## Social-preview copy
 
-**视频一键截屏拼图 · ShotTessera**
+**ShotTessera · Turn video into storyboards on macOS**
 
-Turn a video into a clean screenshot collage or storyboard on macOS. Local,
-fast, private, and open source.
+Smart frame selection, optional manual fine-tuning, and fully local export.
 
-Use [`docs/assets/social-preview.jpg`](assets/social-preview.jpg) for the
+Use [`docs/assets/social-preview-v2.jpg`](assets/social-preview-v2.jpg) for the
 repository social preview. It is a 1280 × 640 px JPEG and remains below
 GitHub's 1 MB recommendation.
 

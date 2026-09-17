@@ -16,21 +16,33 @@ To regenerate the animation on macOS:
 The committed GIF is 960 × 540, contains 12 frames, and is kept intentionally
 small for the README's first-screen loading performance.
 
+No third-party stock footage, photographs, or video clips are used in the
+README. A future real-world case study must come from footage created or
+explicitly licensed by the project and include a source-and-permission record
+before it is published.
+
 ## Installation guides
 
 `install-guide-background.png`, `install-guide-en.jpg`,
-`install-guide-zh.jpg`, and `install-guide-ja.jpg` are original project
-assets. The background was generated solely for this project without using a
-third-party image as a reference; the instructional panels, icons, and all
-text are rendered from project-authored code in
-`scripts/create_install_guide.swift`. They do not reproduce Apple screenshots,
-Apple artwork, or third-party app artwork.
+`install-guide-zh.jpg`, and `install-guide-ja.jpg` are project assets. The
+background and explanatory layout are original project work. The three visual
+cards deliberately use the approved, real ShotTessera screenshots in
+`install-screen-dmg.png` and `install-screen-launch.png`, rather than drawings
+of Finder, the Applications folder, or the app.
+
+Those screenshots show only ShotTessera's installer or its own empty-state UI;
+they contain no user files, third-party apps, or third-party media. They are
+provided by the project owner for this documentation and are released with the
+other original project assets under the [MIT License](../../LICENSE).
 
 To regenerate a guide on macOS:
 
 ```sh
 swift scripts/create_install_guide.swift \
-  docs/assets/install-guide-background.png zh docs/assets/install-guide-zh.jpg
+  docs/assets/install-guide-background.png zh \
+  docs/assets/install-screen-dmg.png \
+  docs/assets/install-screen-launch.png \
+  docs/assets/install-guide-zh.jpg
 ```
 
 Replace `zh` with `en` or `ja` for the other localized guides. These original

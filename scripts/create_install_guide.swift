@@ -1,9 +1,8 @@
 import AppKit
 import Foundation
 
-/// Renders localized beginner-installation guides using original shapes and a
-/// project-generated background. It contains no Apple screenshots or
-/// third-party icon artwork.
+/// Renders localized beginner-installation guides around approved, real
+/// ShotTessera installation and launch screenshots.
 
 private enum Language: String {
     case english = "en"
@@ -112,79 +111,23 @@ private func text(
     (value as NSString).draw(in: rect, withAttributes: attributes)
 }
 
-private func drawAppIcon(in rect: NSRect) {
-    let gradient = NSGradient(colors: [color(0.07, 0.17, 0.42), color(0.15, 0.34, 0.77)])!
-    gradient.draw(in: rounded(rect, radius: rect.width * 0.21), angle: -45)
-    stroke(rect, color(0.72, 0.94, 1, 0.72), width: 2, radius: rect.width * 0.21)
-    let eye = NSRect(x: rect.minX + rect.width * 0.16, y: rect.midY - rect.height * 0.16, width: rect.width * 0.68, height: rect.height * 0.32)
-    let eyePath = NSBezierPath(ovalIn: eye)
-    color(0.84, 0.97, 1).setStroke()
-    eyePath.lineWidth = max(2, rect.width * 0.045)
-    eyePath.stroke()
-    let tileSize = eye.width / 3.8
-    for row in 0..<2 {
-        for column in 0..<3 {
-            let tile = NSRect(
-                x: eye.minX + eye.width * 0.12 + CGFloat(column) * tileSize * 1.08,
-                y: eye.minY + eye.height * 0.16 + CGFloat(row) * tileSize * 0.8,
-                width: tileSize,
-                height: tileSize * 0.6
-            )
-            fill(tile, color(0.30 + CGFloat(column) * 0.07, 0.72, 0.87, 0.9), radius: tile.width * 0.16)
-        }
-    }
-    fill(NSRect(x: eye.midX - rect.width * 0.07, y: eye.midY - rect.width * 0.07, width: rect.width * 0.14, height: rect.width * 0.14), color(0.05, 0.08, 0.16), radius: rect.width * 0.07)
-}
+private func drawScreenshot(_ image: NSImage, in rect: NSRect, source: NSRect? = nil) {
+    let available = source ?? NSRect(origin: .zero, size: image.size)
+    guard available.width > 0, available.height > 0 else { return }
+    let scale = max(rect.width / available.width, rect.height / available.height)
+    let sourceSize = NSSize(width: rect.width / scale, height: rect.height / scale)
+    let crop = NSRect(
+        x: available.midX - sourceSize.width / 2,
+        y: available.midY - sourceSize.height / 2,
+        width: sourceSize.width,
+        height: sourceSize.height
+    ).intersection(available)
 
-private func drawDmg(in rect: NSRect) {
-    fill(rect, color(0.12, 0.18, 0.32, 0.98), radius: 18)
-    stroke(rect, color(0.65, 0.89, 1, 0.52), width: 1.5, radius: 18)
-    let titleBar = NSRect(x: rect.minX, y: rect.maxY - 35, width: rect.width, height: 35)
-    fill(titleBar, color(1, 1, 1, 0.08), radius: 18)
-    fill(NSRect(x: rect.minX + 16, y: rect.maxY - 22, width: 9, height: 9), color(1, 0.36, 0.37), radius: 4.5)
-    fill(NSRect(x: rect.minX + 31, y: rect.maxY - 22, width: 9, height: 9), color(1, 0.75, 0.25), radius: 4.5)
-    drawAppIcon(in: NSRect(x: rect.midX - 34, y: rect.minY + 31, width: 68, height: 68))
-}
-
-private func drawFolder(in rect: NSRect) {
-    let tab = NSRect(x: rect.minX + rect.width * 0.08, y: rect.maxY - rect.height * 0.32, width: rect.width * 0.42, height: rect.height * 0.24)
-    fill(tab, color(0.33, 0.79, 0.96), radius: 12)
-    fill(NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.77), color(0.20, 0.68, 0.91), radius: 18)
-    stroke(NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.77), color(0.78, 0.96, 1, 0.55), width: 1.5, radius: 18)
-    text("A", in: NSRect(x: rect.minX, y: rect.minY + rect.height * 0.16, width: rect.width, height: rect.height * 0.30), size: rect.width * 0.32, weight: .medium, color: color(0.08, 0.37, 0.62, 0.65), alignment: .center)
-}
-
-private func drawArrow(from start: NSPoint, to end: NSPoint) {
-    let line = NSBezierPath()
-    line.move(to: start)
-    line.line(to: end)
-    line.lineWidth = 7
-    line.lineCapStyle = .round
-    color(0.36, 0.87, 0.91).setStroke()
-    line.stroke()
-    let head = NSBezierPath()
-    head.move(to: end)
-    head.line(to: NSPoint(x: end.x - 19, y: end.y + 14))
-    head.move(to: end)
-    head.line(to: NSPoint(x: end.x - 19, y: end.y - 14))
-    head.lineWidth = 7
-    head.lineCapStyle = .round
-    head.lineJoinStyle = .round
-    color(0.36, 0.87, 0.91).setStroke()
-    head.stroke()
-}
-
-private func drawMenu(in rect: NSRect, language: Language) {
-    fill(rect, color(0.95, 0.97, 1, 0.98), radius: 13)
-    stroke(rect, color(0.35, 0.44, 0.58, 0.45), width: 1, radius: 13)
-    let openText: String
-    switch language {
-    case .english: openText = "Open"
-    case .chinese: openText = "打开"
-    case .japanese: openText = "開く"
-    }
-    fill(NSRect(x: rect.minX + 10, y: rect.minY + 13, width: rect.width - 20, height: 36), color(0.12, 0.48, 0.92, 0.16), radius: 8)
-    text(openText, in: NSRect(x: rect.minX + 24, y: rect.minY + 22, width: rect.width - 48, height: 18), size: 15, weight: .semibold, color: color(0.04, 0.16, 0.30))
+    NSGraphicsContext.saveGraphicsState()
+    rounded(rect, radius: 14).addClip()
+    image.draw(in: rect, from: crop, operation: .sourceOver, fraction: 1)
+    NSGraphicsContext.restoreGraphicsState()
+    stroke(rect, color(0.71, 0.91, 1, 0.46), width: 1.3, radius: 14)
 }
 
 private func drawTrash(in rect: NSRect) {
@@ -200,7 +143,7 @@ private func drawStep(
     _ index: Int,
     in rect: NSRect,
     copy: (title: String, body: String),
-    language: Language
+    screenshot: NSImage
 ) {
     fill(rect, color(0.035, 0.07, 0.15, 0.88), radius: 24)
     stroke(rect, color(0.66, 0.88, 1, 0.22), width: 1.25, radius: 24)
@@ -208,25 +151,26 @@ private func drawStep(
     text("\(index)", in: NSRect(x: rect.minX + 25, y: rect.maxY - 49, width: 30, height: 18), size: 13, weight: .bold, color: color(0.03, 0.08, 0.15), alignment: .center)
     text(copy.title, in: NSRect(x: rect.minX + 68, y: rect.maxY - 55, width: rect.width - 92, height: 28), size: 20, weight: .bold, color: color(0.91, 0.97, 1))
 
-    let visual = NSRect(x: rect.midX - 105, y: rect.minY + 129, width: 210, height: 132)
+    let visual = NSRect(x: rect.minX + 25, y: rect.minY + 120, width: rect.width - 50, height: 184)
+    let source: NSRect?
     switch index {
     case 1:
-        drawDmg(in: visual)
+        // A close crop makes the mounted app icon legible while keeping the
+        // window chrome visible, so this remains recognisably a real DMG view.
+        source = NSRect(x: 350, y: 250, width: 720, height: 600)
     case 2:
-        let app = NSRect(x: visual.minX + 2, y: visual.minY + 20, width: 92, height: 92)
-        drawAppIcon(in: app)
-        drawArrow(from: NSPoint(x: app.maxX + 13, y: app.midY), to: NSPoint(x: visual.maxX - 104, y: app.midY))
-        drawFolder(in: NSRect(x: visual.maxX - 90, y: visual.minY + 22, width: 88, height: 78))
+        // This wider crop keeps the actual app, arrow and Applications alias in
+        // one captured installer view.
+        source = NSRect(x: 260, y: 335, width: 2_080, height: 740)
     default:
-        let app = NSRect(x: visual.minX + 8, y: visual.minY + 20, width: 82, height: 82)
-        drawAppIcon(in: app)
-        drawMenu(in: NSRect(x: visual.minX + 97, y: visual.minY + 31, width: 103, height: 62), language: language)
+        source = nil
     }
+    drawScreenshot(screenshot, in: visual, source: source)
 
     text(copy.body, in: NSRect(x: rect.minX + 25, y: rect.minY + 30, width: rect.width - 50, height: 78), size: 14, weight: .regular, color: color(0.70, 0.83, 0.95))
 }
 
-private func render(background: NSImage, copy: Copy, language: Language) -> Data {
+private func render(background: NSImage, copy: Copy, screenshots: [NSImage]) -> Data {
     let bitmap = NSBitmapImageRep(
         bitmapDataPlanes: nil,
         pixelsWide: Int(canvas.width),
@@ -258,7 +202,7 @@ private func render(background: NSImage, copy: Copy, language: Language) -> Data
     let originY: CGFloat = 330
     for index in 0..<3 {
         let rect = NSRect(x: originX + CGFloat(index) * (stepWidth + spacing), y: originY, width: stepWidth, height: stepHeight)
-        drawStep(index + 1, in: rect, copy: copy.steps[index], language: language)
+        drawStep(index + 1, in: rect, copy: copy.steps[index], screenshot: screenshots[index])
     }
 
     let safety = NSRect(x: 496, y: 270, width: 608, height: 44)
@@ -277,16 +221,20 @@ private func render(background: NSImage, copy: Copy, language: Language) -> Data
     return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.88])!
 }
 
-guard CommandLine.arguments.count == 4,
+guard CommandLine.arguments.count == 6,
       let language = Language(rawValue: CommandLine.arguments[2]) else {
-    fputs("Usage: create_install_guide.swift <background.png> <en|zh|ja> <output.jpg>\n", stderr)
+    fputs("Usage: create_install_guide.swift <background.png> <en|zh|ja> <dmg.png> <launch.png> <output.jpg>\n", stderr)
     exit(64)
 }
 
 let backgroundURL = URL(fileURLWithPath: CommandLine.arguments[1])
-let outputURL = URL(fileURLWithPath: CommandLine.arguments[3])
-guard let background = NSImage(contentsOf: backgroundURL) else {
-    fputs("Could not read background image.\n", stderr)
+let dmgURL = URL(fileURLWithPath: CommandLine.arguments[3])
+let launchURL = URL(fileURLWithPath: CommandLine.arguments[4])
+let outputURL = URL(fileURLWithPath: CommandLine.arguments[5])
+guard let background = NSImage(contentsOf: backgroundURL),
+      let dmg = NSImage(contentsOf: dmgURL),
+      let launch = NSImage(contentsOf: launchURL) else {
+    fputs("Could not read background or required screenshots.\n", stderr)
     exit(66)
 }
-try render(background: background, copy: .forLanguage(language), language: language).write(to: outputURL)
+try render(background: background, copy: .forLanguage(language), screenshots: [dmg, dmg, launch]).write(to: outputURL)
