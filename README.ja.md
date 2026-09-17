@@ -2,15 +2,15 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+![オリジナルの合成映像サンプルから九分割の絵コンテを生成するアニメーション](docs/assets/video-to-storyboard-demo.gif)
+
 ShotTessera は、動画から代表的なフレームを選び、一枚の見やすい絵コンテ画像にまとめるネイティブ macOS アプリです。`tessera` はモザイクを構成する小片を意味します。
 
 別名は **视频一键截屏拼图** です。動画スクリーンショット、動画コンタクトシート、絵コンテ作成、動画フレーム抽出のための macOS ツールとして検索できます。
 
-> **安定版：**[v0.2.2 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.2) · macOS 13 以降 · Apple Silicon / Intel Mac
+> **最新リリース：**[v0.2.3 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.3) · macOS 13 以降 · Apple Silicon / Intel Mac
 
 ## 一枚で分かる仕組み
-
-![動画から有効なフレームを選び、コンタクトシートにして書き出す ShotTessera の流れ](docs/assets/video-to-storyboard-overview.png)
 
 | 1. 動画を追加 | 2. フレームを選択 | 3. シートを作成 | 4. ローカルに書き出し |
 | --- | --- | --- | --- |
@@ -30,13 +30,25 @@ ShotTessera は、動画から代表的なフレームを選び、一枚の見�
 
 解析と書き出しはすべてローカルで行われます。アカウント、テレメトリー、ネットワーク通信、クラウドアップロード、Electron、FFmpeg、Python ランタイムは含まれません。
 
-## ダウンロードして使う
+## ダウンロード
 
-1. [最新リリース](https://github.com/ixiehao/ShotTessera/releases/latest)を開き、Apple Silicon / Intel Mac 対応のユニバーサル **DMG** をダウンロードします。
-2. DMG を開き、**视频一键截屏拼图** を「アプリケーション」フォルダへドラッグします。
-3. アプリを開き、動画を一つ以上選択するかドラッグ＆ドロップします。
+[Homebrew](https://brew.sh/) を使用している場合：
 
-Apple Silicon または Intel Mac と macOS 13 以降が必要です。アプリは ad-hoc 署名済みですが Apple の公証は受けていません。初回起動時に Gatekeeper の警告が出る場合は、Control-click して「開く」を選んでください。
+```sh
+brew install --cask ixiehao/tap/shottessera
+```
+
+または [最新リリース](https://github.com/ixiehao/ShotTessera/releases/latest)を開き、Apple Silicon / Intel Mac 対応のユニバーサル **DMG** をダウンロードします。
+
+## 安全にインストールする
+
+![macOS 初心者向けの三段階インストールガイド](docs/assets/install-guide-ja.jpg)
+
+1. ダウンロードした `.dmg` をダブルクリックし、**视频一键截屏拼图.app** を「アプリケーション」へドラッグします。
+2. コピー完了後、DMG は取り出しまたは削除できます。これはインストーラーなので、インストール済みアプリは削除されません。
+3. このアプリはまだ Apple の公証を受けていません。開発元を確認できないと表示された場合は、「アプリケーション」で Control-click し、「開く」を選んで、もう一度「開く」を確認します。macOS 全体の安全設定は変更しないでください。
+
+あとで削除する場合は、アプリを終了してから「アプリケーション」の `视频一键截屏拼图.app` だけをゴミ箱へ移動します。書き出した画像は元動画の横に残ります。Apple Silicon または Intel Mac と macOS 13 以降が必要です。
 
 ## プロジェクトとフィードバック
 

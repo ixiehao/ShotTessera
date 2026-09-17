@@ -2,15 +2,15 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+![原创合成示例：视频画面经过智能挑选，生成九宫格分镜图](docs/assets/video-to-storyboard-demo.gif)
+
 ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表性的画面，拼成一张干净的分镜图。`tessera` 意为马赛克的小拼片，正对应本项目把镜头组织为整体的方式。
 
 项目名称为 **视频一键截屏拼图**，适合搜索“视频截图拼图”“视频一键截图”“分镜图生成器”“视频九宫格截图”“视频联系表”等关键词。
 
-> **稳定版：**[v0.2.2 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.2) · macOS 13+ · Apple Silicon 与 Intel Mac
+> **最新版：**[v0.2.3 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.3) · macOS 13+ · Apple Silicon 与 Intel Mac
 
 ## 一张图看懂功能
-
-![视频一键截屏拼图的工作流程：视频画面经过智能挑选，组成分镜网格并导出](docs/assets/video-to-storyboard-overview.png)
 
 | 1. 添加视频 | 2. 智能挑帧 | 3. 生成拼图 | 4. 本地导出 |
 | --- | --- | --- | --- |
@@ -30,13 +30,25 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 
 所有分析和导出均在本机完成。项目不包含账号、遥测、网络请求、云上传、Electron、FFmpeg 或 Python 运行时。
 
-## 下载与使用
+## 下载
 
-1. 打开[最新发布页](https://github.com/ixiehao/ShotTessera/releases/latest)，下载适用于 Apple Silicon 或 Intel Mac 的通用 **DMG**。
-2. 打开 DMG，将 **视频一键截屏拼图** 拖入“应用程序”文件夹。
-3. 打开应用，选择或直接拖入一个或多个视频即可使用。
+如已安装 [Homebrew](https://brew.sh/)，可直接执行：
 
-需要 Apple Silicon 或 Intel Mac，以及 macOS 13 或更高版本。应用使用 ad-hoc 签名、尚未经过 Apple 公证；如果首次打开时出现系统拦截提示，请按住 Control 点按应用并选择“打开”。
+```sh
+brew install --cask ixiehao/tap/shottessera
+```
+
+也可打开[最新发布页](https://github.com/ixiehao/ShotTessera/releases/latest)，下载适用于 Apple Silicon 或 Intel Mac 的通用 **DMG**。
+
+## 安装前先看这三步
+
+![适合新手的 macOS 三步安装图文说明](docs/assets/install-guide-zh.jpg)
+
+1. 双击下载的 `.dmg`，将 **视频一键截屏拼图.app** 拖进“应用程序”。
+2. 复制完成后可推出或删除 DMG；它只是安装包，不会删除已经安装的应用。
+3. 应用尚未经过 Apple 公证。若系统提示无法验证开发者，请在“应用程序”中按住 Control 点按应用，选择“打开”，再确认一次“打开”。无需关闭 macOS 的系统级安全设置。
+
+之后如需卸载，先退出应用，再将“应用程序”中的 `视频一键截屏拼图.app` 移入废纸篓（回收站）。已经导出的图片仍在原视频文件夹中。需要 Apple Silicon 或 Intel Mac，以及 macOS 13 或更高版本。
 
 ## 项目与反馈
 

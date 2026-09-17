@@ -2,17 +2,31 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+![An original synthetic video sample becoming a nine-frame storyboard](docs/assets/video-to-storyboard-demo.gif)
+
 **ShotTessera** is a small native macOS app that turns video into a clean contact sheet, storyboard, or screenshot collage. It is also named **视频一键截屏拼图**.
 
-> **Stable release:** [v0.2.2 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.2) · macOS 13+ · Apple Silicon and Intel
+> **Latest release:** [v0.2.3 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.3) · macOS 13+ · Apple Silicon and Intel
 
 ## Download
 
-1. Open [the latest release](https://github.com/ixiehao/ShotTessera/releases/latest) and download the universal **DMG**.
-2. Open it and drag **视频一键截屏拼图** into **Applications**.
-3. Open the app and choose or drop in one or more videos.
+With [Homebrew](https://brew.sh/):
 
-Requires an Apple Silicon or Intel Mac running macOS 13 or later. The app is ad-hoc signed but not Apple-notarized; if macOS shows a Gatekeeper warning on first launch, Control-click the app and choose **Open**.
+```sh
+brew install --cask ixiehao/tap/shottessera
+```
+
+Or open [the latest release](https://github.com/ixiehao/ShotTessera/releases/latest) and download the universal **DMG**.
+
+## Install safely
+
+![Three beginner-friendly installation steps for macOS](docs/assets/install-guide-en.jpg)
+
+1. Double-click the downloaded `.dmg`, then drag **视频一键截屏拼图.app** to **Applications**.
+2. After the copy finishes, eject or delete the DMG. It is only the installer; it does **not** remove the installed app.
+3. The app is not Apple-notarized yet. If macOS cannot verify the developer, open **Applications**, Control-click the app, choose **Open**, then choose **Open** once more. Do not disable macOS system-wide security.
+
+To remove it later, quit the app and move only `视频一键截屏拼图.app` from Applications to Trash. Exported images remain beside their source videos. Requires an Apple Silicon or Intel Mac running macOS 13 or later.
 
 ## Project
 
@@ -22,8 +36,6 @@ Requires an Apple Silicon or Intel Mac running macOS 13 or later. The app is ad-
 - What changed: [CHANGELOG.md](CHANGELOG.md) · Privacy promise: [PRIVACY.md](PRIVACY.md)
 
 ## At a glance
-
-![ShotTessera flow: video frames become a contact sheet and then an exported image](docs/assets/video-to-storyboard-overview.png)
 
 | Add video | Select useful frames | Build the sheet | Export locally |
 | --- | --- | --- | --- |
