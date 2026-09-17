@@ -10,7 +10,7 @@ ShotTessera は、動画から代表的なフレームを選び、一枚の見�
 
 別名は **视频一键截屏拼图** です。動画スクリーンショット、動画コンタクトシート、絵コンテ作成、動画フレーム抽出のための macOS ツールとして検索できます。
 
-> **最新リリース：**[v0.2.3 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.3) · macOS 13 以降 · Apple Silicon / Intel Mac
+> **最新リリース：**[v0.2.4 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.4) · macOS 13 以降 · Apple Silicon / Intel Mac
 
 ## 一枚で分かる仕組み
 

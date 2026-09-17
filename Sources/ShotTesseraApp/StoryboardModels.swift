@@ -138,6 +138,11 @@ enum VideoJobState: Equatable {
         case .failed: language.text("job.failed")
         }
     }
+
+    var failureMessage: String? {
+        guard case let .failed(message) = self else { return nil }
+        return message
+    }
 }
 
 struct VideoJob: Identifiable, Equatable {

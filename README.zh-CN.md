@@ -10,7 +10,7 @@ ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表�
 
 项目名称为 **视频一键截屏拼图**，适合搜索“视频截图拼图”“视频一键截图”“分镜图生成器”“视频九宫格截图”“视频联系表”等关键词。
 
-> **最新版：**[v0.2.3 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.3) · macOS 13+ · Apple Silicon 与 Intel Mac
+> **最新版：**[v0.2.4 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.4) · macOS 13+ · Apple Silicon 与 Intel Mac
 
 ## 一张图看懂功能
 

@@ -3,6 +3,23 @@
 All notable user-facing changes are recorded here. Stable releases remain
 available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/releases).
 
+## v0.2.4
+
+### 中文
+
+- 批处理新增安全暂停/继续与停止确认；暂停会在当前影片保存后生效，可调整未处理影片的配置。
+- 单个影片失败不会中断队列；结束后可查看失败原因并仅重试失败项。
+
+### English
+
+- Batch runs can safely pause/resume or stop with confirmation; a pause takes effect after the current video is saved.
+- A failed video no longer stops the queue; review its error and retry only failed items afterward.
+
+### 日本語
+
+- バッチ処理に確認付きの安全な一時停止・再開・停止を追加。停止は現在の動画を保存した後に反映されます。
+- 1 本の失敗でキュー全体は止まらず、終了後に原因を確認して失敗分だけ再試行できます。
+
 ## v0.2.3
 
 ### 中文

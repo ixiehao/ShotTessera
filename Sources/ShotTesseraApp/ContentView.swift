@@ -17,6 +17,10 @@ struct ContentView: View {
     @State private var isAspectPickerPresented = false
     @State private var isWidthPickerPresented = false
     @State private var manualFrameEditorRequest: ManualFrameEditorRequest?
+    @State private var isPauseConfirmationPresented = false
+    @State private var isResumeConfirmationPresented = false
+    @State private var isCancelConfirmationPresented = false
+    @State private var isFailureReportPresented = false
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .chinese
@@ -57,6 +61,34 @@ struct ContentView: View {
             Button(t("button.ok"), role: .cancel) { }
         } message: {
             Text(model.errorMessage)
+        }
+        .confirmationDialog(t("alert.pauseBatch.title"), isPresented: $isPauseConfirmationPresented, titleVisibility: .visible) {
+            Button(t("button.pauseConfirm")) { model.requestPause() }
+            Button(t("button.cancel"), role: .cancel) { }
+        } message: {
+            Text(t("alert.pauseBatch.message"))
+        }
+        .confirmationDialog(t("alert.resumeBatch.title"), isPresented: $isResumeConfirmationPresented, titleVisibility: .visible) {
+            Button(t("button.resumeConfirm")) { model.resumeGeneration() }
+            Button(t("button.cancel"), role: .cancel) { }
+        } message: {
+            Text(t("alert.resumeBatch.message"))
+        }
+        .confirmationDialog(t("alert.cancelBatch.title"), isPresented: $isCancelConfirmationPresented, titleVisibility: .visible) {
+            Button(t("button.cancelGenerationConfirm"), role: .destructive) { model.cancelGeneration() }
+            Button(t("button.keepGenerating"), role: .cancel) { }
+        } message: {
+            Text(t("alert.cancelBatch.message"))
+        }
+        .sheet(isPresented: $isFailureReportPresented) {
+            BatchFailureReport(
+                jobs: model.failedJobs,
+                language: language,
+                retry: {
+                    isFailureReportPresented = false
+                    model.retryFailedJobs()
+                }
+            )
         }
         .sheet(item: $manualFrameEditorRequest) { request in
             ManualFrameEditor(
@@ -275,7 +307,7 @@ struct ContentView: View {
                 }
             }
 
-            VideoBatchCard(jobs: model.videoJobs, language: language, isTargeted: model.isDropTargeted, isLocked: model.isBusy) {
+            VideoBatchCard(jobs: model.videoJobs, language: language, isTargeted: model.isDropTargeted, isLocked: model.isQueueLocked) {
                 model.chooseVideo()
             } clear: {
                 model.clearVideos()
@@ -295,7 +327,7 @@ struct ContentView: View {
                                 .padding(.vertical, 8)
                         }
                         .buttonStyle(GridChoiceStyle(isSelected: model.gridSide == side))
-                        .disabled(model.isBusy)
+                        .disabled(model.isSettingsLocked)
                     }
                 }
             }
@@ -320,7 +352,7 @@ struct ContentView: View {
                         .toggleStyle(.switch)
                         .tint(SelectionPalette.active)
                         .compactOptionSurface()
-                        .disabled(model.isBusy)
+                        .disabled(model.isSettingsLocked)
 
                     Toggle(t("export.title"), isOn: $model.showTitleWatermark)
                         .font(.system(size: 11, weight: .medium))
@@ -330,7 +362,7 @@ struct ContentView: View {
                         .toggleStyle(.switch)
                         .tint(SelectionPalette.active)
                         .compactOptionSurface()
-                        .disabled(model.isBusy)
+                        .disabled(model.isSettingsLocked)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -355,7 +387,7 @@ struct ContentView: View {
                                 .padding(.vertical, 8)
                         }
                         .buttonStyle(GridChoiceStyle(isSelected: model.format == format))
-                        .disabled(model.isBusy)
+                        .disabled(model.isSettingsLocked)
                     }
                 }
             }
@@ -376,14 +408,60 @@ struct ContentView: View {
             .accessibilityLabel(model.isProcessing ? t("accessibility.generating") : t("accessibility.generate"))
 
             if model.isProcessing {
-                Button(t("button.cancel"), role: .cancel, action: model.cancelGeneration)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 8) {
+                    Button {
+                        if model.isPaused {
+                            isResumeConfirmationPresented = true
+                        } else if !model.isPauseRequested {
+                            isPauseConfirmationPresented = true
+                        }
+                    } label: {
+                        GlyphLabel(
+                            title: model.isPaused ? t("button.resumeGeneration") : (model.isPauseRequested ? t("button.pausePending") : t("button.pauseGeneration")),
+                            glyph: model.isPaused ? .play : .pause,
+                            glyphSize: 13
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                    }
+                    .buttonStyle(ProcessingControlButtonStyle(tone: .primary))
+                    .disabled(model.isPauseRequested && !model.isPaused)
+
+                    Button {
+                        isCancelConfirmationPresented = true
+                    } label: {
+                        GlyphLabel(title: t("button.cancelGeneration"), glyph: .trash, glyphSize: 13)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(ProcessingControlButtonStyle(tone: .destructive))
+                }
                 ProgressView(value: model.progress)
                     .tint(Color(red: 0.38, green: 0.82, blue: 0.92))
                     .accessibilityLabel(t("accessibility.analyzing"))
                     .accessibilityValue("\(Int(model.progress * 100))%")
+            }
+
+            if model.hasFailedJobs && !model.isProcessing {
+                HStack(spacing: 8) {
+                    Button {
+                        model.retryFailedJobs()
+                    } label: {
+                        GlyphLabel(title: t("button.retryFailed", model.failedJobCount), glyph: .refresh, glyphSize: 13)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(ProcessingControlButtonStyle(tone: .primary))
+
+                    Button {
+                        isFailureReportPresented = true
+                    } label: {
+                        GlyphLabel(title: t("button.failureDetails"), glyph: .eye, glyphSize: 13)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(ProcessingControlButtonStyle(tone: .secondary))
+                }
             }
         }
         .padding(24)
@@ -549,7 +627,10 @@ final class StoryboardViewModel: ObservableObject {
     @Published private(set) var activeCardAspectRatio = 16.0 / 9.0
     @Published private(set) var activeJobIndex = 0
     @Published private(set) var activeJobCount = 0
+    @Published private(set) var activeJobName = ""
     @Published var isProcessing = false
+    @Published private(set) var isPauseRequested = false
+    @Published private(set) var isPaused = false
     @Published var progress = 0.0
     @Published var isDropTargeted = false
     @Published var showError = false
@@ -562,6 +643,7 @@ final class StoryboardViewModel: ObservableObject {
     @Published private(set) var selectedPreviewIndex = 0
     fileprivate var generationTask: Task<Void, Never>?
     private var generationRunID = UUID()
+    private var generationControl: BatchRunControl?
     private var pendingData: Data?
     private var pendingSource: URL?
     private var pendingFormat: ExportFormat?
@@ -572,6 +654,11 @@ final class StoryboardViewModel: ObservableObject {
 
     var hasVideos: Bool { !videoJobs.isEmpty }
     var isBusy: Bool { isProcessing || isApplyingFrameAdjustments }
+    var isSettingsLocked: Bool { (isProcessing && !isPaused) || isApplyingFrameAdjustments }
+    var isQueueLocked: Bool { isProcessing || isApplyingFrameAdjustments }
+    var failedJobs: [VideoJob] { videoJobs.filter { $0.state.failureMessage != nil } }
+    var failedJobCount: Int { failedJobs.count }
+    var hasFailedJobs: Bool { !failedJobs.isEmpty }
     fileprivate var manualEditorRequest: ManualFrameEditorRequest? {
         guard !isBusy, completedPreviews.indices.contains(selectedPreviewIndex) else { return nil }
         let preview = completedPreviews[selectedPreviewIndex]
@@ -591,15 +678,19 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     var previewStatus: String {
+        if isPaused { return outputDescription }
+        if isPauseRequested { return t("status.pausePending") }
         if isProcessing {
             let totalFrames = activeGridSide * activeGridSide
-            let name = videoJobs.indices.contains(activeJobIndex) ? videoJobs[activeJobIndex].url.lastPathComponent : t("default.video")
+            let name = activeJobName.isEmpty ? t("default.video") : activeJobName
             return t("status.processing", activeJobIndex + 1, max(1, activeJobCount), name, livePreviewFrames.count, totalFrames)
         }
         return previewImage == nil ? t("status.empty") : outputDescription
     }
 
     var processingLabel: String {
+        if isPaused { return t("processing.paused") }
+        if isPauseRequested { return t("processing.pausePending") }
         let batchPrefix = activeJobCount > 1 ? "\(activeJobIndex + 1)/\(activeJobCount) · " : ""
         return switch progress {
         case ..<0.58: t("processing.fast", batchPrefix)
@@ -665,45 +756,85 @@ final class StoryboardViewModel: ObservableObject {
 
     func generate() {
         guard !videoJobs.isEmpty, !isBusy else { return }
+        startGeneration(indices: Array(videoJobs.indices), resetPreviews: true)
+    }
+
+    func retryFailedJobs() {
+        guard !isBusy else { return }
+        let indices = videoJobs.indices.filter { videoJobs[$0].state.failureMessage != nil }
+        guard !indices.isEmpty else { return }
+        for index in indices { videoJobs[index].state = .queued }
+        startGeneration(indices: indices, resetPreviews: false)
+    }
+
+    func requestPause() {
+        guard isProcessing, !isPauseRequested, !isPaused, let generationControl else { return }
+        isPauseRequested = true
+        Task { await generationControl.requestPause() }
+    }
+
+    func resumeGeneration() {
+        guard isProcessing, isPaused, let generationControl else { return }
+        isPaused = false
+        isPauseRequested = false
+        Task { await generationControl.resume() }
+    }
+
+    private func startGeneration(indices: [Int], resetPreviews: Bool) {
+        guard !indices.isEmpty else { return }
         let runID = UUID()
         generationRunID = runID
         isProcessing = true
+        isPauseRequested = false
+        isPaused = false
         progress = 0
         lastSavedURL = nil
         pendingData = nil
         pendingSource = nil
         pendingFormat = nil
-        completedPreviews = []
-        selectedPreviewIndex = 0
-        let settings = ExportSettings(
-            gridSide: gridSide,
-            layoutAspect: layoutAspect,
-            language: language,
-            format: format,
-            width: width,
-            showTimestamps: showTimestamps,
-            showTitleWatermark: showTitleWatermark
-        )
+        if resetPreviews {
+            completedPreviews = []
+            selectedPreviewIndex = 0
+        }
         let analyzer = VideoStoryboardAnalyzer()
         let bridge = UIStateBridge(model: self, generationRunID: runID)
-        let sourceURLs = videoJobs.map(\.url)
-        for index in videoJobs.indices { videoJobs[index].state = .queued }
+        let selectedJobs = indices.compactMap { index -> (index: Int, url: URL)? in
+            guard videoJobs.indices.contains(index) else { return nil }
+            return (index, videoJobs[index].url)
+        }
+        guard !selectedJobs.isEmpty else {
+            isProcessing = false
+            return
+        }
+        let control = BatchRunControl()
+        generationControl = control
+        for index in selectedJobs.map(\.index) { videoJobs[index].state = .queued }
 
         let task = Task.detached(priority: .userInitiated) {
-            for (index, videoURL) in sourceURLs.enumerated() {
+            for (batchIndex, job) in selectedJobs.enumerated() {
+                var settings: ExportSettings?
                 do {
+                    if await control.isPauseRequested() {
+                        await bridge.pauseBatch()
+                        await control.waitUntilResumed()
+                        try Task.checkCancellation()
+                        await bridge.resumeBatch()
+                    }
                     try Task.checkCancellation()
+                    guard let currentSettings = await bridge.currentGenerationSettings() else { return }
+                    settings = currentSettings
                     await bridge.beginJob(
-                        source: videoURL,
-                        index: index,
-                        total: sourceURLs.count,
-                        gridSide: settings.gridSide,
-                        layoutAspect: settings.layoutAspect
+                        source: job.url,
+                        jobIndex: job.index,
+                        batchIndex: batchIndex,
+                        total: selectedJobs.count,
+                        gridSide: currentSettings.gridSide,
+                        layoutAspect: currentSettings.layoutAspect
                     )
                     let result = try await analyzer.analyze(
-                        videoURL: videoURL,
-                        gridSide: settings.gridSide,
-                        outputWidth: settings.safeWidth,
+                        videoURL: job.url,
+                        gridSide: currentSettings.gridSide,
+                        outputWidth: currentSettings.safeWidth,
                         progress: { value in
                             bridge.report(progress: value)
                         },
@@ -711,14 +842,20 @@ final class StoryboardViewModel: ObservableObject {
                             bridge.appendPreview(frame, index: frameIndex, total: totalFrames)
                         }
                     )
-                    let data = try StoryboardComposer.render(result: result, settings: settings)
-                    await bridge.finishJob(data: data, result: result, settings: settings, index: index, total: sourceURLs.count)
+                    let data = try StoryboardComposer.render(result: result, settings: currentSettings)
+                    await bridge.finishJob(data: data, result: result, settings: currentSettings, index: job.index, total: selectedJobs.count)
                 } catch is CancellationError {
                     await bridge.cancelled()
                     return
                 } catch {
-                    let message = (error as? StoryboardError)?.message(in: settings.language) ?? error.localizedDescription
-                    await bridge.failJob(index: index, message: message)
+                    let language: AppLanguage
+                    if let settings {
+                        language = settings.language
+                    } else {
+                        language = await bridge.currentLanguage()
+                    }
+                    let message = (error as? StoryboardError)?.message(in: language) ?? error.localizedDescription
+                    await bridge.failJob(index: job.index, message: message)
                 }
             }
             await bridge.finishBatch()
@@ -727,25 +864,58 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     func cancelGeneration() {
+        let control = generationControl
         generationRunID = UUID()
         generationTask?.cancel()
         generationTask = nil
+        generationControl = nil
         isProcessing = false
+        isPauseRequested = false
+        isPaused = false
+        for index in videoJobs.indices where videoJobs[index].state == .processing {
+            videoJobs[index].state = .queued
+        }
         livePreviewFrames = []
         outputDescription = t("status.cancelled")
+        Task { await control?.resume() }
+    }
+
+    fileprivate func generationSettings() -> ExportSettings {
+        ExportSettings(
+            gridSide: gridSide,
+            layoutAspect: layoutAspect,
+            language: language,
+            format: format,
+            width: width,
+            showTimestamps: showTimestamps,
+            showTitleWatermark: showTitleWatermark
+        )
+    }
+
+    fileprivate func markPausedAtCheckpoint() {
+        isPaused = true
+        isPauseRequested = false
+        livePreviewFrames = []
+        outputDescription = t("status.paused")
+    }
+
+    fileprivate func markResumedAtCheckpoint() {
+        isPaused = false
+        isPauseRequested = false
     }
 
     private var activeUsesSourceAspect = true
 
-    func beginJob(source: URL, index: Int, total: Int, gridSide: Int, layoutAspect: StoryboardAspect) {
-        activeJobIndex = index
+    func beginJob(source: URL, jobIndex: Int, batchIndex: Int, total: Int, gridSide: Int, layoutAspect: StoryboardAspect) {
+        activeJobIndex = batchIndex
         activeJobCount = total
+        activeJobName = source.lastPathComponent
         activeGridSide = gridSide
         activeUsesSourceAspect = layoutAspect == .source
         activeCardAspectRatio = layoutAspect.resolvedCardAspectRatio(sourceAspectRatio: nil)
         livePreviewFrames = []
         progress = 0
-        if videoJobs.indices.contains(index) { videoJobs[index].state = .processing }
+        if videoJobs.indices.contains(jobIndex) { videoJobs[jobIndex].state = .processing }
         outputDescription = t("status.nowProcessing", source.lastPathComponent)
     }
 
@@ -798,6 +968,9 @@ final class StoryboardViewModel: ObservableObject {
     func finishBatch() {
         isProcessing = false
         generationTask = nil
+        generationControl = nil
+        isPauseRequested = false
+        isPaused = false
         progress = 1
         let completed = videoJobs.filter {
             if case .completed = $0.state { return true }
@@ -815,6 +988,9 @@ final class StoryboardViewModel: ObservableObject {
     func markCancelled() {
         isProcessing = false
         generationTask = nil
+        generationControl = nil
+        isPauseRequested = false
+        isPaused = false
         livePreviewFrames = []
         outputDescription = t("status.cancelled")
     }
@@ -998,7 +1174,8 @@ private final class UIStateBridge: @unchecked Sendable {
 
     func beginJob(
         source: URL,
-        index: Int,
+        jobIndex: Int,
+        batchIndex: Int,
         total: Int,
         gridSide: Int,
         layoutAspect: StoryboardAspect
@@ -1007,7 +1184,8 @@ private final class UIStateBridge: @unchecked Sendable {
             guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
             model.beginJob(
                 source: source,
-                index: index,
+                jobIndex: jobIndex,
+                batchIndex: batchIndex,
                 total: total,
                 gridSide: gridSide,
                 layoutAspect: layoutAspect
@@ -1033,6 +1211,33 @@ private final class UIStateBridge: @unchecked Sendable {
         await MainActor.run { [weak self] in
             guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
             model.markJobFailed(index: index, message: message)
+        }
+    }
+
+    func currentGenerationSettings() async -> ExportSettings? {
+        await MainActor.run { [weak self] in
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return nil }
+            return model.generationSettings()
+        }
+    }
+
+    func currentLanguage() async -> AppLanguage {
+        await MainActor.run { [weak self] in
+            self?.model?.language ?? .chinese
+        }
+    }
+
+    func pauseBatch() async {
+        await MainActor.run { [weak self] in
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.markPausedAtCheckpoint()
+        }
+    }
+
+    func resumeBatch() async {
+        await MainActor.run { [weak self] in
+            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
+            model.markResumedAtCheckpoint()
         }
     }
 
@@ -1348,6 +1553,84 @@ private enum ShotTesseraIconAsset {
         guard let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png") else { return nil }
         return NSImage(contentsOf: url)
     }()
+}
+
+private struct ProcessingControlButtonStyle: ButtonStyle {
+    enum Tone {
+        case primary
+        case secondary
+        case destructive
+    }
+
+    let tone: Tone
+
+    func makeBody(configuration: Configuration) -> some View {
+        let colors: (fill: Color, stroke: Color, text: Color) = switch tone {
+        case .primary:
+            (Color(red: 0.12, green: 0.38, blue: 0.54).opacity(0.80), Color(red: 0.36, green: 0.82, blue: 0.92).opacity(0.72), .white)
+        case .secondary:
+            (Color.white.opacity(0.075), Color.white.opacity(0.16), PreviewText.primary)
+        case .destructive:
+            (Color(red: 0.48, green: 0.10, blue: 0.16).opacity(0.82), Color(red: 1.0, green: 0.42, blue: 0.46).opacity(0.75), .white)
+        }
+        return configuration.label
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(colors.text)
+            .background(colors.fill.opacity(configuration.isPressed ? 0.68 : 1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(colors.stroke)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private struct BatchFailureReport: View {
+    let jobs: [VideoJob]
+    let language: AppLanguage
+    let retry: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private func t(_ key: String, _ arguments: CVarArg...) -> String {
+        language.text(key, arguments: arguments)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(t("failureReport.title"))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                Text(t("failureReport.detail", jobs.count))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            List(jobs) { job in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(job.url.lastPathComponent)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Text(job.state.failureMessage ?? t("failureReport.unknown"))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                .padding(.vertical, 3)
+            }
+            .frame(minHeight: 180, idealHeight: 300)
+
+            HStack {
+                Button(t("button.close")) { dismiss() }
+                Spacer()
+                Button(action: retry) {
+                    GlyphLabel(title: t("button.retryFailed", jobs.count), glyph: .refresh)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(22)
+        .frame(width: 560, height: 450)
+    }
 }
 
 private struct VideoBatchCard: View {

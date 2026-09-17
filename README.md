@@ -8,7 +8,7 @@
 
 **Smart selection first. Fine-tune any frame. Export entirely locally.**
 
-> **Latest release:** [v0.2.3 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.3) · macOS 13+ · Apple Silicon and Intel
+> **Latest release:** [v0.2.4 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.4) · macOS 13+ · Apple Silicon and Intel
 
 ## Download
 

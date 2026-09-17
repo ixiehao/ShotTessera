@@ -7,7 +7,7 @@ struct ProjectIcon: View {
     enum Symbol {
         case language, disclosure, check, selector, grid, layers, export
         case wand, previous, next, folder, save, sliders, film, selected
-        case eye, filmStack, plus, trash, refresh
+        case eye, filmStack, plus, trash, refresh, pause, play
     }
 
     let symbol: Symbol
@@ -128,6 +128,11 @@ private struct ProjectIconPath: Shape {
         case .refresh:
             path.addArc(center: point(12, 12), radius: side * 7.5 / 24, startAngle: .degrees(40), endAngle: .degrees(320), clockwise: false)
             path.move(to: point(17.4, 5.6)); path.addLine(to: point(19.6, 5.8)); path.addLine(to: point(19.2, 8))
+        case .pause:
+            path.addRoundedRect(in: area(6.3, 4.5, 4.2, 15), cornerSize: CGSize(width: 1.1, height: 1.1))
+            path.addRoundedRect(in: area(13.5, 4.5, 4.2, 15), cornerSize: CGSize(width: 1.1, height: 1.1))
+        case .play:
+            path.move(to: point(7.5, 4.6)); path.addLine(to: point(18.5, 12)); path.addLine(to: point(7.5, 19.4)); path.closeSubpath()
         }
         return path
     }

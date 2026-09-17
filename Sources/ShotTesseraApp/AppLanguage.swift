@@ -26,11 +26,15 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "aspect.square", "aspect.vertical", "aspect.portrait", "aspect.ultraWide",
         "section.export", "export.autosave", "export.format", "export.width", "export.width.value",
         "export.time", "export.title", "button.generate.single",
-        "button.generate.batch", "button.cancel", "accessibility.generating", "accessibility.generate",
+        "button.generate.batch", "button.cancel", "button.cancelGeneration", "button.cancelGenerationConfirm", "button.keepGenerating",
+        "button.pauseGeneration", "button.pausePending", "button.pauseConfirm", "button.resumeGeneration", "button.resumeConfirm",
+        "button.retryFailed", "button.failureDetails", "button.close", "accessibility.generating", "accessibility.generate",
         "accessibility.analyzing", "preview.title", "preview.position", "button.saveas", "button.openSaved", "button.openSaved.hint",
         "button.adjustFrames", "button.adjustFrames.hint", "button.previousResult", "button.nextResult", "status.processing", "status.empty",
         "default.video", "processing.fast", "processing.people", "processing.assembling", "error.unsupportedInput",
         "status.cancelled", "status.nowProcessing", "status.saved", "status.manualSaved", "status.generatedNotSaved", "status.failedContinue",
+        "status.paused", "status.pausePending", "processing.paused", "processing.pausePending", "alert.pauseBatch.title", "alert.pauseBatch.message",
+        "alert.resumeBatch.title", "alert.resumeBatch.message", "alert.cancelBatch.title", "alert.cancelBatch.message",
         "status.batchCompleted", "status.batchCompletedWithFailures", "job.queued", "job.processing", "job.completed",
         "job.failed", "queue.more", "queue.clear", "queue.clear.hint", "video.add", "video.added", "video.support",
         "video.queueHint", "preview.live", "preview.empty.title", "preview.empty.description", "error.unreadableVideo",
@@ -40,7 +44,8 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "help.step.create.title", "help.step.create.detail", "help.troubleshoot.title", "help.troubleshoot.detail",
         "help.privacy", "help.project", "help.feedback", "editor.title", "editor.detail", "editor.loading",
         "editor.noPreview", "editor.apply",
-        "editor.cancel", "editor.selectionCount", "editor.smartSelect", "editor.regenerate"
+        "editor.cancel", "editor.selectionCount", "editor.smartSelect", "editor.regenerate",
+        "failureReport.title", "failureReport.detail", "failureReport.unknown"
     ]
 
     /// Resource-bundle lookup is immutable for the lifetime of the process.

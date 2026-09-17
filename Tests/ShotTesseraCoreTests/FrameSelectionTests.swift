@@ -28,6 +28,35 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertTrue(model.showError)
     }
 
+    @MainActor
+    func testFailedJobsAreTrackedForTargetedRetry() {
+        let model = StoryboardViewModel()
+        model.addVideos([
+            URL(fileURLWithPath: "/tmp/first.mp4"),
+            URL(fileURLWithPath: "/tmp/second.mp4")
+        ])
+        model.markJobFailed(index: 1, message: "Unsupported codec")
+
+        XCTAssertEqual(model.failedJobCount, 1)
+        XCTAssertEqual(model.failedJobs.first?.url.lastPathComponent, "second.mp4")
+        XCTAssertEqual(model.failedJobs.first?.state.failureMessage, "Unsupported codec")
+    }
+
+    func testBatchRunControlWaitsOnlyWhenPauseWasRequested() async {
+        let control = BatchRunControl()
+        await control.waitUntilResumed()
+
+        await control.requestPause()
+        let resumed = Task { () -> Bool in
+            await control.waitUntilResumed()
+            return true
+        }
+        await Task.yield()
+        await control.resume()
+        let didResume = await resumed.value
+        XCTAssertTrue(didResume)
+    }
+
     func testExportFilenameUsesShotSequence() {
         XCTAssertEqual(
             ExportDestination.filename(baseName: "concert", format: .png, sequence: 1),
