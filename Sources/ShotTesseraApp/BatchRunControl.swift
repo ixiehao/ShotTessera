@@ -17,8 +17,19 @@ actor BatchRunControl {
 
     func waitUntilResumed() async {
         guard pauseRequested else { return }
-        await withCheckedContinuation { continuation in
-            resumeWaiters.append(continuation)
+        await withTaskCancellationHandler {
+            guard !Task.isCancelled else { return }
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled, pauseRequested else {
+                    continuation.resume()
+                    return
+                }
+                resumeWaiters.append(continuation)
+            }
+        } onCancel: {
+            // Cancellation must release a paused worker even if the view/model
+            // has already gone away and cannot send an explicit resume call.
+            Task { await self.resume() }
         }
     }
 

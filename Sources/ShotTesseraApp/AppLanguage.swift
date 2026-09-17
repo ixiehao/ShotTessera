@@ -21,7 +21,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     var locale: Locale { Locale(identifier: rawValue) }
 
     static let requiredLocalizationKeys = [
-        "alert.generation.title", "button.ok", "app.tagline", "app.language", "app.icon.accessibility",
+        "alert.generation.title", "button.ok", "app.tagline", "app.language", "app.appearance", "appearance.system", "appearance.light", "appearance.dark", "app.icon.accessibility",
         "section.grid", "section.frame", "section.aspect", "aspect.source", "aspect.landscape", "aspect.standard",
         "aspect.square", "aspect.vertical", "aspect.portrait", "aspect.ultraWide",
         "section.export", "export.autosave", "export.format", "export.width", "export.width.value",
@@ -38,7 +38,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "status.batchCompleted", "status.batchCompletedWithFailures", "job.queued", "job.processing", "job.completed",
         "job.failed", "queue.more", "queue.clear", "queue.clear.hint", "video.add", "video.added", "video.support",
         "video.queueHint", "preview.live", "preview.empty.title", "preview.empty.description", "error.unreadableVideo",
-        "error.unsupportedCodec", "error.noUsableFrames", "error.noExportData", "about.menu", "about.developer",
+        "error.unsupportedCodec", "error.noUsableFrames", "error.noExportData", "error.previewStorage", "about.menu", "about.developer",
         "about.feedback", "about.privacy", "about.license", "help.menu", "help.title", "help.intro",
         "help.step.add.title", "help.step.add.detail", "help.step.settings.title", "help.step.settings.detail",
         "help.step.create.title", "help.step.create.detail", "help.troubleshoot.title", "help.troubleshoot.detail",
@@ -46,7 +46,9 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "update.menu.check", "button.downloadUpdate", "editor.title", "editor.detail", "editor.loading",
         "editor.noPreview", "editor.apply",
         "editor.cancel", "editor.selectionCount", "editor.smartSelect", "editor.regenerate",
-        "failureReport.title", "failureReport.detail", "failureReport.unknown"
+        "failureReport.title", "failureReport.detail", "failureReport.unknown", "failureReport.transcoding.badge",
+        "failureReport.showSources", "failureReport.transcodingGuide", "transcoding.title", "transcoding.intro",
+        "transcoding.step.one", "transcoding.step.two", "transcoding.step.three", "transcoding.tip"
     ]
 
     /// Resource-bundle lookup is immutable for the lifetime of the process.

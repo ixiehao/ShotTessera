@@ -107,9 +107,15 @@ enum TimestampFormatter {
 
 enum ExportDestination {
     static func filename(baseName: String, format: ExportFormat, sequence: Int) -> String {
-        let safeBaseName = baseName.isEmpty ? "video" : baseName
         let suffix = String(format: "%03d", max(1, sequence))
-        return "\(safeBaseName)-shot-\(suffix).\(format.fileExtension)"
+        let ending = "-shot-\(suffix).\(format.fileExtension)"
+        // macOS permits 255 UTF-8 bytes per filename, not 255 characters. Leave
+        // space for the generated suffix without splitting a Unicode character.
+        var safeBaseName = baseName.isEmpty ? "video" : baseName
+        while safeBaseName.utf8.count + ending.utf8.count > 255 {
+            safeBaseName.removeLast()
+        }
+        return "\(safeBaseName)\(ending)"
     }
 
     static func nextURL(for source: URL, format: ExportFormat, fileManager: FileManager = .default) -> URL {
@@ -124,11 +130,45 @@ enum ExportDestination {
     }
 }
 
+/// A hint avoids rescanning all earlier outputs for every image in a batch.
+/// The candidate is still checked on disk because another app may have created
+/// it since the previous write. The writer actor owns and serializes this value.
+struct ExportSequenceAllocator {
+    private struct Key: Hashable {
+        let folder: String
+        let baseName: String
+        let fileExtension: String
+    }
+
+    private var nextSequences: [Key: Int] = [:]
+
+    mutating func nextURL(
+        for source: URL,
+        format: ExportFormat,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> URL {
+        let folder = source.deletingLastPathComponent().standardizedFileURL
+        let baseName = source.deletingPathExtension().lastPathComponent
+        let key = Key(folder: folder.path, baseName: baseName, fileExtension: format.fileExtension)
+        var sequence = nextSequences[key] ?? 1
+        while true {
+            let candidate = folder.appendingPathComponent(
+                ExportDestination.filename(baseName: baseName, format: format, sequence: sequence)
+            )
+            if !fileExists(candidate.path) {
+                nextSequences[key] = sequence + 1
+                return candidate
+            }
+            sequence += 1
+        }
+    }
+}
+
 enum VideoJobState: Equatable {
     case queued
     case processing
     case completed(String)
-    case failed(String)
+    case failed(VideoFailure)
 
     func label(in language: AppLanguage) -> String {
         switch self {
@@ -140,9 +180,52 @@ enum VideoJobState: Equatable {
     }
 
     var failureMessage: String? {
-        guard case let .failed(message) = self else { return nil }
-        return message
+        guard case let .failed(failure) = self else { return nil }
+        return failure.message
     }
+
+    var canRetry: Bool {
+        guard case let .failed(failure) = self else { return false }
+        return failure.isRetryable
+    }
+
+    var needsTranscoding: Bool {
+        guard case let .failed(failure) = self else { return false }
+        return failure.needsTranscoding
+    }
+}
+
+/// Only transient failures belong in the retry action. A decoder limitation is
+/// deterministic, so sending it through the same batch again wastes time.
+struct VideoFailure: Equatable {
+    enum Kind: Equatable {
+        case retryable, needsTranscoding, permanent
+    }
+
+    let message: String
+    let kind: Kind
+
+    var isRetryable: Bool { kind == .retryable }
+
+    static func retryable(_ message: String) -> VideoFailure {
+        VideoFailure(message: message, kind: .retryable)
+    }
+
+    static func needsTranscoding(_ message: String) -> VideoFailure {
+        VideoFailure(message: message, kind: .needsTranscoding)
+    }
+
+    static func classify(_ error: Error, language: AppLanguage) -> VideoFailure {
+        guard let error = error as? StoryboardError else { return .retryable(error.localizedDescription) }
+        let message = error.message(in: language)
+        switch error {
+        case .unsupportedCodec: return .needsTranscoding(message)
+        case .unreadableVideo, .noUsableFrames: return VideoFailure(message: message, kind: .permanent)
+        case .noExportData: return .retryable(message)
+        }
+    }
+
+    var needsTranscoding: Bool { kind == .needsTranscoding }
 }
 
 struct VideoJob: Identifiable, Equatable {

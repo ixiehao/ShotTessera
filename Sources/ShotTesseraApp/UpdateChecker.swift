@@ -30,18 +30,29 @@ struct AvailableUpdate: Equatable, Sendable {
     let downloadURL: URL
 }
 
-@MainActor
-final class UpdateChecker: ObservableObject {
-    private struct GitHubRelease: Decodable {
-        let tagName: String
-        let htmlURL: URL
+struct GitHubRelease: Decodable {
+    let tagName: String
+    let htmlURL: URL
+    let draft: Bool
+    let prerelease: Bool
 
-        enum CodingKeys: String, CodingKey {
-            case tagName = "tag_name"
-            case htmlURL = "html_url"
-        }
+    enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+        case htmlURL = "html_url"
+        case draft, prerelease
     }
 
+    func update(newerThan currentVersion: ReleaseVersion) -> AvailableUpdate? {
+        guard !draft, !prerelease,
+              let version = ReleaseVersion(tag: tagName), currentVersion < version,
+              htmlURL.scheme == "https", htmlURL.host == "github.com",
+              htmlURL.path.hasPrefix("/ixiehao/ShotTessera/releases/") else { return nil }
+        return AvailableUpdate(version: tagName, downloadURL: htmlURL)
+    }
+}
+
+@MainActor
+final class UpdateChecker: ObservableObject {
     @Published private(set) var availableUpdate: AvailableUpdate?
     @Published private(set) var lastCheckFailed = false
 
@@ -81,13 +92,11 @@ final class UpdateChecker: ObservableObject {
                 return
             }
             let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
-            guard let releaseVersion = ReleaseVersion(tag: release.tagName) else {
+            guard ReleaseVersion(tag: release.tagName) != nil else {
                 lastCheckFailed = true
                 return
             }
-            availableUpdate = currentVersion < releaseVersion
-                ? AvailableUpdate(version: release.tagName, downloadURL: release.htmlURL)
-                : nil
+            availableUpdate = release.update(newerThan: currentVersion)
             lastCheckFailed = false
         } catch {
             // Offline and transient API failures must never interrupt the app.
@@ -117,6 +126,7 @@ struct UpdateAvailableBanner: View {
                     .foregroundStyle(Color(red: 0.38, green: 0.89, blue: 0.93))
                 Text(language.text("update.available", update.version))
                     .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
                     .lineLimit(1)
                 Button(language.text("button.downloadUpdate")) {
                     checker.openDownloadPage()
@@ -131,7 +141,7 @@ struct UpdateAvailableBanner: View {
             .background(Color(red: 0.10, green: 0.17, blue: 0.29).opacity(0.98), in: Capsule())
             .overlay { Capsule().strokeBorder(Color(red: 0.36, green: 0.84, blue: 0.93).opacity(0.68)) }
             .shadow(color: .black.opacity(0.24), radius: 10, y: 3)
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
         }
     }
 }

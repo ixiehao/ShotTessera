@@ -46,16 +46,17 @@ struct VideoStoryboardAnalyzer: Sendable {
             // batch. Keep each pass scoped so memory remains stable on both
             // Intel and Apple Silicon Macs.
             let descriptor: FrameDescriptor? = autoreleasepool {
+                var actualTime = CMTime.zero
                 guard let image = try? analysisGenerator.copyCGImage(
                     at: CMTime(seconds: time, preferredTimescale: 600),
-                    actualTime: nil
+                    actualTime: &actualTime
                 ), let previewData = ImageCodec.jpegData(from: image, compressionQuality: 0.88) else {
                     return nil
                 }
                 let metrics = PixelMetrics.make(from: image)
                 var descriptor = FrameDescriptor(
                     id: index,
-                    time: time,
+                    time: actualTime.isValid && actualTime.seconds.isFinite ? actualTime.seconds : time,
                     histogram: metrics.histogram,
                     luminance: metrics.luminance,
                     blackRatio: metrics.blackRatio,
@@ -128,7 +129,7 @@ struct VideoStoryboardAnalyzer: Sendable {
             var nextID = -1
             while captured.count < targetCount {
                 let source = fallback[captured.count % fallback.count]
-                captured.append(CapturedFrame(id: nextID, time: source.time, jpegData: source.jpegData))
+                captured.append(CapturedFrame(id: nextID, time: source.time, jpegData: source.jpegData, aspectRatio: source.aspectRatio))
                 nextID -= 1
             }
         }

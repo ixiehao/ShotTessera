@@ -5,7 +5,7 @@ import SwiftUI
 /// No third-party icon font, glyph library, or trademarked artwork is bundled.
 struct ProjectIcon: View {
     enum Symbol {
-        case language, disclosure, check, selector, grid, layers, export
+        case language, appearance, moon, disclosure, check, selector, grid, layers, export
         case wand, previous, next, folder, save, sliders, film, selected
         case eye, filmStack, plus, trash, refresh, pause, play
     }
@@ -14,10 +14,17 @@ struct ProjectIcon: View {
     var size: CGFloat = 16
 
     var body: some View {
-        ProjectIconPath(symbol: symbol)
-            .stroke(style: StrokeStyle(lineWidth: max(1.35, size * 0.105), lineCap: .round, lineJoin: .round))
-            .frame(width: size, height: size)
-            .accessibilityHidden(true)
+        Group {
+            if symbol == .moon {
+                ProjectIconPath(symbol: symbol)
+                    .fill(style: FillStyle(eoFill: true))
+            } else {
+                ProjectIconPath(symbol: symbol)
+                    .stroke(style: StrokeStyle(lineWidth: max(1.35, size * 0.105), lineCap: .round, lineJoin: .round))
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 
@@ -61,6 +68,19 @@ private struct ProjectIconPath: Shape {
             path.move(to: point(3.5, 12)); path.addLine(to: point(20.5, 12))
             path.move(to: point(12, 3.3)); path.addCurve(to: point(12, 20.7), control1: point(7.5, 7), control2: point(7.5, 17))
             path.move(to: point(12, 3.3)); path.addCurve(to: point(12, 20.7), control1: point(16.5, 7), control2: point(16.5, 17))
+        case .appearance:
+            path.addEllipse(in: area(7.5, 7.5, 9, 9))
+            for index in 0..<8 {
+                let angle = CGFloat(index) * .pi / 4
+                let start = CGPoint(x: rect.midX + cos(angle) * side * 6.6 / 24, y: rect.midY + sin(angle) * side * 6.6 / 24)
+                let end = CGPoint(x: rect.midX + cos(angle) * side * 9.3 / 24, y: rect.midY + sin(angle) * side * 9.3 / 24)
+                path.move(to: start); path.addLine(to: end)
+            }
+        case .moon:
+            // An even-odd pair creates a high-contrast crescent that remains
+            // recognisable at the compact size used by the appearance control.
+            path.addEllipse(in: area(2.5, 2.5, 19, 19))
+            path.addEllipse(in: area(8.3, 0.8, 19, 19))
         case .disclosure:
             path.move(to: point(7, 9)); path.addLine(to: point(12, 14)); path.addLine(to: point(17, 9))
         case .check:

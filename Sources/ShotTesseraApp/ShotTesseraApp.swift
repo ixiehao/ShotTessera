@@ -150,23 +150,77 @@ private struct HelpPanel: View {
 /// In particular, a Dock click after miniaturising the only window must bring
 /// that existing window back instead of leaving the application active but
 /// invisible.
+enum MainWindowReopenAction: Equatable {
+    case create, restore, none
+
+    static func resolve(hasMainWindow: Bool, isVisible: Bool, isMiniaturized: Bool) -> Self {
+        guard hasMainWindow else { return .create }
+        return !isVisible || isMiniaturized ? .restore : .none
+    }
+}
+
+@MainActor
 final class ShotTesseraAppDelegate: NSObject, NSApplicationDelegate {
     private var helpWindow: NSWindow?
+    private weak var mainWindow: NSWindow?
+    private var mainWindowCloseObserver: NSObjectProtocol?
+    private var openMainWindow: (() -> Void)?
+    private var shouldFocusNextMainWindow = false
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        guard !flag else { return true }
+        // SwiftUI does not recreate a WindowGroup merely because this delegate
+        // returns false. Keep its OpenWindowAction and invoke it explicitly.
+        // This avoids the old broad lookup, which could restore a hidden Help
+        // window instead of the application's primary window.
+        // `flag` includes Help/About windows. Only the main window determines
+        // whether clicking the Dock must recreate or restore the workspace.
+        let action = MainWindowReopenAction.resolve(
+            hasMainWindow: mainWindow != nil,
+            isVisible: mainWindow?.isVisible ?? false,
+            isMiniaturized: mainWindow?.isMiniaturized ?? false
+        )
+        if action == .create {
+            shouldFocusNextMainWindow = openMainWindow != nil
+            openMainWindow?()
+            sender.activate(ignoringOtherApps: true)
+            return openMainWindow != nil
+        }
+        guard action == .restore, let mainWindow else { return true }
         Task { @MainActor [weak self] in
-            self?.restoreMainWindow(in: sender)
+            self?.restore(mainWindow, in: sender)
         }
         return true
     }
 
     @MainActor
-    private func restoreMainWindow(in application: NSApplication) {
-        guard let window = application.windows.first(where: { $0.contentView != nil }) else {
-            application.activate(ignoringOtherApps: true)
-            return
+    func configureMainWindowOpener(_ opener: @escaping () -> Void) {
+        openMainWindow = opener
+    }
+
+    @MainActor
+    func registerMainWindow(_ window: NSWindow) {
+        guard window !== self.helpWindow, window !== self.mainWindow else { return }
+        self.mainWindowCloseObserver.map(NotificationCenter.default.removeObserver)
+        self.mainWindow = window
+        let registeredWindowID = ObjectIdentifier(window)
+        self.mainWindowCloseObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard self?.mainWindow.map(ObjectIdentifier.init) == registeredWindowID else { return }
+                self?.mainWindow = nil
+            }
         }
+        if shouldFocusNextMainWindow {
+            shouldFocusNextMainWindow = false
+            restore(window, in: NSApplication.shared)
+        }
+    }
+
+    @MainActor
+    private func restore(_ window: NSWindow, in application: NSApplication) {
         if window.isMiniaturized {
             window.deminiaturize(nil)
         }
@@ -206,28 +260,64 @@ final class ShotTesseraAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Retains SwiftUI's scene-opening action after the main window closes, so the
+/// AppKit Dock callback can create a fresh WindowGroup instance on macOS 13+.
+private struct MainWindowLifecycleBridge: View {
+    let appDelegate: ShotTesseraAppDelegate
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        MainWindowRegistrationView(appDelegate: appDelegate)
+            .frame(width: 0, height: 0)
+            .onAppear {
+                let action = openWindow
+                appDelegate.configureMainWindowOpener {
+                    action(id: "main")
+                }
+            }
+    }
+}
+
+private struct MainWindowRegistrationView: NSViewRepresentable {
+    let appDelegate: ShotTesseraAppDelegate
+
+    func makeNSView(context: Context) -> RegistrationView {
+        let view = RegistrationView()
+        view.register = { [weak appDelegate] window in
+            appDelegate?.registerMainWindow(window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: RegistrationView, context: Context) { }
+
+    final class RegistrationView: NSView {
+        var register: ((NSWindow) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { register?(window) }
+        }
+    }
+}
+
 @main
 struct ShotTesseraApp: App {
     @NSApplicationDelegateAdaptor(ShotTesseraAppDelegate.self) private var appDelegate
     @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
     @StateObject private var updateChecker = UpdateChecker()
+    @StateObject private var storyboardModel = StoryboardViewModel()
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .chinese
     }
 
-    init() {
-        if let iconURL = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
-           let icon = NSImage(contentsOf: iconURL) {
-            NSApplication.shared.applicationIconImage = icon
-        }
-    }
-
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        Window("ShotTessera", id: "main") {
+            ContentView(model: storyboardModel)
                 .environmentObject(updateChecker)
                 .frame(minWidth: 940, minHeight: 700)
+                .background(MainWindowLifecycleBridge(appDelegate: appDelegate))
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)

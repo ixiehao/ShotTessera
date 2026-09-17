@@ -42,6 +42,21 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(model.failedJobs.first?.state.failureMessage, "Unsupported codec")
     }
 
+    @MainActor
+    func testCodecFailuresAreExcludedFromRetry() {
+        let model = StoryboardViewModel()
+        model.addVideos([
+            URL(fileURLWithPath: "/tmp/legacy.rmvb"),
+            URL(fileURLWithPath: "/tmp/temporary.mov")
+        ])
+        model.markJobFailed(index: 0, failure: .needsTranscoding("Convert this video"))
+        model.markJobFailed(index: 1, message: "Temporary read error")
+
+        XCTAssertEqual(model.failedJobCount, 2)
+        XCTAssertEqual(model.transcodingJobs.map(\.url.lastPathComponent), ["legacy.rmvb"])
+        XCTAssertEqual(model.retryableFailedJobs.map(\.url.lastPathComponent), ["temporary.mov"])
+    }
+
     func testBatchRunControlWaitsOnlyWhenPauseWasRequested() async {
         let control = BatchRunControl()
         await control.waitUntilResumed()

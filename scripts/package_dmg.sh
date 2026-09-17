@@ -3,29 +3,31 @@ set -euo pipefail
 
 readonly project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 readonly product_name="视频一键截屏拼图"
-readonly volume_name="ShotTessera"
 readonly executable_name="ShotTessera"
 readonly bundle_name="ShotTessera_ShotTesseraApp.bundle"
 readonly version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$project_dir/Packaging/Info.plist")"
+# A versioned Finder volume avoids colliding with a user's still-open older
+# installer. Finder resolves a duplicate disk by its internal name, which can
+# otherwise write the layout into the wrong, read-only image.
+readonly volume_name="ShotTessera $version Installer"
 readonly output_dir="$project_dir/dist"
 readonly app_path="$output_dir/$product_name.app"
 readonly dmg_path="$output_dir/ShotTessera-$version.dmg"
 readonly checksum_path="$dmg_path.sha256"
-readonly staging_dir="$output_dir/.dmg-staging"
 readonly background_path="$output_dir/.dmg-install-background.png"
-readonly writable_dmg_path="$output_dir/.dmg-writable.dmg"
+readonly iconset_build_dir="$output_dir/.iconset-build"
 
-mounted_device=""
 validation_device=""
+validation_mount=""
 
 cleanup() {
-  if [[ -n "$mounted_device" ]]; then
-    hdiutil detach "$mounted_device" -quiet || true
-  fi
   if [[ -n "$validation_device" ]]; then
     hdiutil detach "$validation_device" -quiet || true
   fi
-  rm -rf "$staging_dir" "$writable_dmg_path"
+  if [[ -n "$validation_mount" ]]; then
+    rmdir "$validation_mount" 2>/dev/null || true
+  fi
+  rm -rf "$iconset_build_dir"
 }
 
 trap cleanup EXIT
@@ -47,7 +49,31 @@ if [[ " $binary_architectures " != *" arm64 "* || " $binary_architectures " != *
 fi
 ditto "$binary_dir/$bundle_name" "$app_path/Contents/Resources/$bundle_name"
 ditto "Packaging/Info.plist" "$app_path/Contents/Info.plist"
-ditto "Assets/ShotTessera.icns" "$app_path/Contents/Resources/AppIcon.icns"
+
+# A classic ICNS preserves the source image's transparent canvas. Icon
+# Composer's automatic surface adds a bright, full-size squircle on recent
+# macOS releases, which makes this app look oversized in the Dock even when
+# the visible mark itself is scaled down.
+rm -rf "$iconset_build_dir"
+mkdir -p "$iconset_build_dir/AppIcon.iconset"
+while IFS=: read -r filename pixels; do
+  sips --resampleHeightWidth "$pixels" "$pixels" "Assets/AppIcon-1024-source.png" \
+    --out "$iconset_build_dir/AppIcon.iconset/$filename" >/dev/null
+done <<'ICON_SIZES'
+icon_16x16.png:16
+icon_16x16@2x.png:32
+icon_32x32.png:32
+icon_32x32@2x.png:64
+icon_128x128.png:128
+icon_128x128@2x.png:256
+icon_256x256.png:256
+icon_256x256@2x.png:512
+icon_512x512.png:512
+icon_512x512@2x.png:1024
+ICON_SIZES
+iconutil --convert icns --output "$iconset_build_dir/AppIcon.icns" "$iconset_build_dir/AppIcon.iconset"
+test -f "$iconset_build_dir/AppIcon.icns"
+ditto "$iconset_build_dir/AppIcon.icns" "$app_path/Contents/Resources/AppIcon.icns"
 ditto "LICENSE" "$app_path/Contents/Resources/Licenses/MIT-LICENSE.txt"
 ditto "NOTICE.md" "$app_path/Contents/Resources/Licenses/NOTICE.md"
 ditto "ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt" "$app_path/Contents/Resources/Licenses/NotoSansCJK-OFL-1.1.txt"
@@ -55,126 +81,49 @@ ditto "ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt" "$app_path/Contents/Resources
 codesign --force --sign - --timestamp=none "$app_path"
 codesign --verify --deep --strict --verbose=2 "$app_path"
 
-# Build a Finder installation scene rather than a bare application volume.
-# The actual icons remain fully draggable; the artwork is only a visual guide.
-rm -rf "$staging_dir"
-mkdir -p "$staging_dir/Background"
-ditto "$app_path" "$staging_dir/$product_name.app"
+# dmgbuild writes .DS_Store synchronously, without a Finder GUI session or
+# cached window state. Packaging must fail if this layout cannot be validated.
+readonly packaging_env="$project_dir/.build/dmg-tools"
+# dmgbuild 1.6.7 requires Python 3.10+. Xcode's /usr/bin/python3 can still be
+# 3.9; discover a supported interpreter instead of silently installing an old
+# dmgbuild with broken modern-Finder background bookmarks.
+packaging_python=""
+for candidate in "${PACKAGING_PYTHON:-python3}" /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+  if "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
+    packaging_python="$candidate"
+    break
+  fi
+done
+if [[ -z "$packaging_python" ]]; then
+  printf 'Packaging requires Python 3.10 or newer; set PACKAGING_PYTHON to its executable.\n' >&2
+  exit 1
+fi
+if [[ -x "$packaging_env/bin/python3" ]] && ! "$packaging_env/bin/python3" -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then
+  rm -rf "$packaging_env"
+fi
+if [[ ! -x "$packaging_env/bin/python3" ]]; then
+  "$packaging_python" -m venv "$packaging_env"
+fi
+"$packaging_env/bin/python3" -m pip install --disable-pip-version-check -q -r scripts/dmg-requirements.txt
 swift scripts/create_dmg_background.swift "$background_path"
-ditto "$background_path" "$staging_dir/Background/install-background.png"
-ditto "Assets/ShotTessera.icns" "$staging_dir/.VolumeIcon.icns"
-ln -s /Applications "$staging_dir/应用程序"
-
-hdiutil create \
-  -volname "$volume_name" \
-  -srcfolder "$staging_dir" \
-  -format UDRW \
-  -ov \
-  "$writable_dmg_path"
-
-attach_output="$(hdiutil attach -readwrite -noverify -noautoopen "$writable_dmg_path")"
-mounted_device="$(printf '%s\n' "$attach_output" | awk '/\/Volumes\// { print $1; exit }')"
-# Finder may append " 1" to a volume name when an earlier image with the same
-# name is mounted. Preserve the entire path from /Volumes/ onward instead of
-# taking the final whitespace-delimited field.
-mount_point="$(printf '%s\n' "$attach_output" | awk 'match($0, /\/Volumes\/.*/) { print substr($0, RSTART); exit }')"
-
-if [[ -z "$mounted_device" || -z "$mount_point" ]]; then
-  printf 'Unable to mount writable installer image.\n' >&2
-  exit 1
-fi
-if [[ ! -d "$mount_point" ]]; then
-  printf 'Mounted installer volume is not available at %s.\n' "$mount_point" >&2
-  exit 1
-fi
-printf 'Styling mounted installer at %s\n' "$mount_point"
-
-# A restrictive Finder session must never block a valid installer artifact.
-# The volume still contains the application, Applications shortcut, and
-# background resource; a later packaging run can write the saved view layout.
-if ! osascript - "$mount_point" "$product_name.app" "应用程序" <<'APPLESCRIPT'
-on run argv
-  set mountPath to item 1 of argv
-  set appName to item 2 of argv
-  set applicationsName to item 3 of argv
-  -- Resolve this before entering Finder's tell block. Otherwise Finder can
-  -- interpret the local variable name as one of its own object specifiers.
-  set mountedFolder to (POSIX file mountPath) as alias
-  set backgroundFile to POSIX file (mountPath & "/Background/install-background.png")
-
-  tell application "Finder"
-    -- Work from the exact mounted-folder alias. Disk display names are not
-    -- unique when a prior installer image is still mounted.
-    open mountedFolder
-    delay 1
-    -- Do not address `front window`: a same-named, already-mounted DMG can be
-    -- frontmost and is often read-only. The container window of this alias is
-    -- the writable image that will be converted below.
-    set installerWindow to container window of mountedFolder
-    tell installerWindow
-      set current view to icon view
-      set toolbar visible to false
-      set statusbar visible to false
-      set bounds to {160, 120, 1120, 720}
-    end tell
-    -- Finder applies view changes asynchronously on recent macOS releases.
-    delay 2
-    tell installerWindow
-      set viewOptions to icon view options of installerWindow
-    end tell
-    tell viewOptions
-      set arrangement to not arranged
-      -- Finder accepts a constrained set of icon sizes; 128 is supported by
-      -- both current and older macOS releases.
-      set icon size to 128
-      set text size to 13
-      set background picture to backgroundFile
-    end tell
-    delay 1
-    tell installerWindow
-      -- Finder's vertical item coordinate describes the top of the icon cell,
-      -- while the horizontal coordinate is its center. At 128 pt, y=252 puts
-      -- both icons' visual centers on the background arrow's horizontal axis.
-      set position of item appName to {260, 252}
-      set position of item applicationsName to {700, 252}
-      close
-    end tell
-    open mountedFolder
-  end tell
-end run
-APPLESCRIPT
-then
-  printf 'Warning: Finder did not persist the custom icon layout; created a standard installable DMG instead.\n' >&2
-fi
-
-SetFile -a V "$mount_point/Background" "$mount_point/Background/install-background.png"
-SetFile -a V "$mount_point/.VolumeIcon.icns"
-SetFile -a C "$mount_point"
-sync
-hdiutil detach "$mounted_device" -quiet
-mounted_device=""
-hdiutil convert "$writable_dmg_path" -format UDZO -imagekey zlib-level=9 -ov -o "$dmg_path"
+"$packaging_env/bin/dmgbuild" \
+  -s scripts/dmg-settings.py \
+  -D app="$app_path" \
+  -D background="$background_path" \
+  "$volume_name" "$dmg_path"
 hdiutil verify "$dmg_path"
 
-# Reopen the compressed artifact read-only and verify the user-facing volume,
-# not only the pre-conversion staging folder. This catches lost Finder metadata,
-# a broken Applications alias, or a missing app before a release is uploaded.
-validation_output="$(hdiutil attach -readonly -noverify -noautoopen "$dmg_path")"
-validation_device="$(printf '%s\n' "$validation_output" | awk '/\/Volumes\// { print $1; exit }')"
-validation_mount="$(printf '%s\n' "$validation_output" | awk 'match($0, /\/Volumes\/.*/) { print substr($0, RSTART); exit }')"
-
-if [[ -z "$validation_device" || -z "$validation_mount" || ! -d "$validation_mount" ]]; then
+# A fresh mount path exercises background resolution independently of the
+# build-time /Volumes path. Keep Finder closed until validation is complete.
+validation_mount="$(mktemp -d /tmp/ShotTessera-installer-check.XXXXXX)"
+validation_output="$(hdiutil attach -readonly -noverify -noautoopen -mountpoint "$validation_mount" "$dmg_path")"
+validation_device="$(printf '%s\n' "$validation_output" | awk '/Apple_HFS/ { print $1; exit }')"
+if [[ -z "$validation_device" || ! -d "$validation_mount" ]]; then
   printf 'Unable to remount the final DMG for validation.\n' >&2
   exit 1
 fi
-
-test -d "$validation_mount/$product_name.app"
-test -L "$validation_mount/应用程序"
-test "$(readlink "$validation_mount/应用程序")" = "/Applications"
-test -f "$validation_mount/.DS_Store"
-test -r "$validation_mount/Background/install-background.png"
+"$packaging_env/bin/python3" scripts/verify_dmg_layout.py "$validation_mount" "$product_name.app"
 codesign --verify --deep --strict --verbose=2 "$validation_mount/$product_name.app"
-
 readonly packaged_architectures="$(lipo -archs "$validation_mount/$product_name.app/Contents/MacOS/$executable_name")"
 if [[ " $packaged_architectures " != *" arm64 "* || " $packaged_architectures " != *" x86_64 "* ]]; then
   printf 'Final DMG does not contain a universal arm64 + x86_64 app.\n' >&2

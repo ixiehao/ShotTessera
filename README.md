@@ -41,13 +41,13 @@ To remove it later, quit the app and move only `视频一键截屏拼图.app` fr
 
 | Add video | Smart-select, then fine-tune | Build the sheet | Export locally |
 | --- | --- | --- | --- |
-| Drop one video or queue several. | Detect cuts; avoid black, blurry, and duplicate frames; then replace individual tiles manually if needed. | Preview each tile in a 3×3 to 8×8 storyboard grid. | Save a 1920 px+ PNG or JPEG next to the source video. |
+| Drop one video or queue several. | Detect cuts; avoid black, blurry, and duplicate frames; browse and select alternative frames if needed. | Preview each tile in a 3×3 to 8×8 storyboard grid. | Save a 1920 px+ PNG or JPEG next to the source video. |
 
 ## Features
 
 - Keeps the source video's portrait, square, or landscape composition by default; 16:9, 4:3, 1:1, 3:4, 9:16, and 21:9 are also available.
 - Shows live tiles as each storyboard is assembled and processes multi-video queues sequentially.
-- Opens a lightweight manual selector after generation: keep the smart picks, choose replacement frames, then apply and save.
+- After generation, browse a new set of candidate frames, use Smart Select and fine-tune the selection, then save a new image with the original output settings.
 - Supports MP4, MOV, MPEG, and more (codec support depends on macOS).
 - Optionally adds timecodes and a large translucent title based on the video filename.
 - Switch the interface between 中文, English, and 日本語; the chosen language is remembered.

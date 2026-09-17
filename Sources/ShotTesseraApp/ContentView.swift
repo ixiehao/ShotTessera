@@ -8,13 +8,17 @@ private struct ManualFrameEditorRequest: Identifiable {
     let sourceURL: URL
     let selectionLimit: Int
     let duration: Double
+    let outputWidth: Int
 }
 
 struct ContentView: View {
-    @StateObject private var model = StoryboardViewModel()
+    @StateObject private var model: StoryboardViewModel
     @EnvironmentObject private var updateChecker: UpdateChecker
+    @Environment(\.colorScheme) private var systemColorScheme
     @AppStorage("appLanguage") private var languageCode = AppLanguage.chinese.rawValue
+    @AppStorage("appAppearance") private var appearanceCode = AppAppearance.system.rawValue
     @State private var isLanguagePickerPresented = false
+    @State private var isAppearancePickerPresented = false
     @State private var isAspectPickerPresented = false
     @State private var isWidthPickerPresented = false
     @State private var manualFrameEditorRequest: ManualFrameEditorRequest?
@@ -22,9 +26,48 @@ struct ContentView: View {
     @State private var isResumeConfirmationPresented = false
     @State private var isCancelConfirmationPresented = false
     @State private var isFailureReportPresented = false
+    @State private var isTranscodingGuidePresented = false
+    @State private var presentsTranscodingGuideAfterFailureReport = false
+
+    @MainActor
+    init(model: StoryboardViewModel? = nil) {
+        _model = StateObject(wrappedValue: model ?? StoryboardViewModel())
+    }
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .chinese
+    }
+
+    private var appearance: AppAppearance {
+        AppAppearance(rawValue: appearanceCode) ?? .system
+    }
+
+    private var resolvedAppearance: AppAppearance {
+        appearance == .system ? (systemColorScheme == .light ? .light : .dark) : appearance
+    }
+
+    private var isLightAppearance: Bool { resolvedAppearance == .light }
+
+    private var panelFill: AnyShapeStyle {
+        isLightAppearance
+            ? AnyShapeStyle(Color.white.opacity(0.78))
+            : AnyShapeStyle(.ultraThinMaterial)
+    }
+
+    private var panelBorder: Color {
+        isLightAppearance
+            ? Color(red: 0.57, green: 0.65, blue: 0.80).opacity(0.52)
+            : .white.opacity(0.11)
+    }
+
+    private var appBackground: LinearGradient {
+        let colors: [Color] = switch resolvedAppearance {
+        case .light:
+            [Color(red: 0.93, green: 0.95, blue: 0.99), Color(red: 0.86, green: 0.89, blue: 0.97)]
+        case .dark, .system:
+            [Color(red: 0.05, green: 0.06, blue: 0.10), Color(red: 0.10, green: 0.075, blue: 0.16)]
+        }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     private func t(_ key: String, _ arguments: CVarArg...) -> String {
@@ -33,34 +76,38 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            LinearGradient(
-                colors: [Color(red: 0.05, green: 0.06, blue: 0.10), Color(red: 0.10, green: 0.075, blue: 0.16)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            appBackground.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                UpdateAvailableBanner(checker: updateChecker, language: language)
-                    .padding(.top, 10)
-                    .padding(.trailing, 150)
-                    .frame(height: updateChecker.hasUpdate ? 48 : 0)
+            GeometryReader { geometry in
+                let isCompactHeight = geometry.size.height < 820
 
-                HStack(spacing: 28) {
-                    controlPanel
+                HStack(alignment: .top, spacing: 28) {
+                    controlPanel(compact: isCompactHeight)
                         .frame(width: 332)
+                        .frame(maxHeight: .infinity)
                     previewPanel
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .padding(30)
-                .padding(.top, updateChecker.hasUpdate ? 0 : 18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, 30)
+                .padding(.bottom, 20)
+                .padding(.top, updateChecker.hasUpdate ? 98 : 62)
             }
 
-            languageMenu
-                .padding(.top, 18)
+            headerControls
+                // Hidden-title-bar windows draw below the traffic lights. Keep this
+                // toolbar in that safe strip without consuming card height.
+                .padding(.top, 40)
                 .padding(.trailing, 22)
+
+            if updateChecker.hasUpdate {
+                UpdateAvailableBanner(checker: updateChecker, language: language)
+                    .padding(.top, 64)
+                    .frame(maxWidth: .infinity)
+            }
         }
         .environment(\.locale, language.locale)
+        .preferredColorScheme(appearance.preferredColorScheme)
         .onAppear {
             model.language = language
             Task { await updateChecker.checkForUpdate() }
@@ -92,21 +139,34 @@ struct ContentView: View {
         } message: {
             Text(t("alert.cancelBatch.message"))
         }
-        .sheet(isPresented: $isFailureReportPresented) {
+        .sheet(isPresented: $isFailureReportPresented, onDismiss: presentQueuedTranscodingGuide) {
             BatchFailureReport(
                 jobs: model.failedJobs,
                 language: language,
                 retry: {
                     isFailureReportPresented = false
                     model.retryFailedJobs()
+                },
+                showSources: {
+                    model.showSourceFiles(for: model.failedJobs)
+                },
+                showTranscodingGuide: {
+                    // A sheet cannot reliably present another sheet while it is
+                    // still dismissing. Queue the guide for the dismissal callback.
+                    presentsTranscodingGuideAfterFailureReport = true
+                    isFailureReportPresented = false
                 }
             )
+        }
+        .sheet(isPresented: $isTranscodingGuidePresented) {
+            TranscodingGuide(language: language)
         }
         .sheet(item: $manualFrameEditorRequest) { request in
             ManualFrameEditor(
                 model: model,
                 sourceURL: request.sourceURL,
                 selectionLimit: request.selectionLimit,
+                outputWidth: request.outputWidth,
                 language: language
             ) { frames in
                 model.applyManuallySelectedFrames(
@@ -119,31 +179,99 @@ struct ContentView: View {
         }
     }
 
+    private func presentQueuedTranscodingGuide() {
+        guard presentsTranscodingGuideAfterFailureReport else { return }
+        presentsTranscodingGuideAfterFailureReport = false
+        isTranscodingGuidePresented = true
+    }
+
+    private var headerControls: some View {
+        HStack(spacing: 8) {
+            appearanceMenu
+            languageMenu
+        }
+    }
+
+    private func headerControlLabel(symbol: ProjectIcon.Symbol, title: String) -> some View {
+        HStack(spacing: 7) {
+            ProjectIcon(symbol: symbol, size: symbol == .moon ? 18 : 15)
+                .foregroundStyle(Color(red: 0.26, green: 0.68, blue: 0.84))
+            Text(title)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            ProjectIcon(symbol: .disclosure, size: 10)
+                .foregroundStyle(.secondary)
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .frame(width: 124, height: 34)
+        .contentShape(Capsule())
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay { Capsule().strokeBorder(Color.accentColor.opacity(0.48)) }
+        .shadow(color: .black.opacity(0.12), radius: 7, y: 3)
+    }
+
+    private var appearanceMenu: some View {
+        Button {
+            isAppearancePickerPresented.toggle()
+        } label: {
+            headerControlLabel(symbol: appearanceSymbol, title: appearance.displayName(in: language))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 124, height: 34)
+        .accessibilityLabel(t("app.appearance"))
+        // Open beneath the top toolbar. An upward popover is clipped whenever
+        // the window sits against the top edge of the display.
+        .popover(isPresented: $isAppearancePickerPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(t("app.appearance"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 2)
+
+                ForEach(AppAppearance.allCases) { choice in
+                    Button {
+                        appearanceCode = choice.rawValue
+                        isAppearancePickerPresented = false
+                    } label: {
+                        HStack {
+                            Text(choice.displayName(in: language))
+                            Spacer()
+                            if choice == appearance {
+                                ProjectIcon(symbol: .check, size: 14)
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .background(choice == appearance ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .contentShape(Rectangle())
+                }
+            }
+            .padding(8)
+            .frame(width: 156)
+        }
+    }
+
+    private var appearanceSymbol: ProjectIcon.Symbol {
+        resolvedAppearance == .dark ? .moon : .appearance
+    }
+
     private var languageMenu: some View {
         Button {
             isLanguagePickerPresented.toggle()
         } label: {
-            HStack(spacing: 7) {
-                ProjectIcon(symbol: .language, size: 15)
-                    .foregroundStyle(Color(red: 0.48, green: 0.88, blue: 0.93))
-                Text(language.displayName)
-                    .foregroundStyle(PreviewText.primary)
-                ProjectIcon(symbol: .disclosure, size: 10)
-                    .foregroundStyle(PreviewText.secondary)
-            }
-            .font(.system(size: 12, weight: .semibold))
-            .frame(width: 118, height: 34)
-            .contentShape(Capsule())
-            .background(Color(red: 0.12, green: 0.17, blue: 0.28).opacity(0.96), in: Capsule())
-            .overlay {
-                Capsule().strokeBorder(Color(red: 0.43, green: 0.80, blue: 0.90).opacity(0.62))
-            }
-            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+            headerControlLabel(symbol: .language, title: language.displayName)
         }
         .buttonStyle(.plain)
-        .frame(width: 118, height: 34)
+        .frame(width: 124, height: 34)
         .accessibilityLabel(t("app.language"))
-        .popover(isPresented: $isLanguagePickerPresented, arrowEdge: .top) {
+        .popover(isPresented: $isLanguagePickerPresented, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(t("app.language"))
                     .font(.system(size: 11, weight: .semibold))
@@ -203,7 +331,10 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .compactOptionSurface()
         .accessibilityLabel(t("section.aspect"))
-        .disabled(model.isBusy)
+        // A pause is an intentional checkpoint between jobs. Keep this
+        // setting editable there, so the user can adjust the next job before
+        // resuming; an active render must still keep it stable.
+        .disabled(model.isSettingsLocked)
         .popover(isPresented: $isAspectPickerPresented, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(t("section.aspect"))
@@ -265,7 +396,9 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .compactOptionSurface()
         .accessibilityLabel(t("export.width"))
-        .disabled(model.isBusy)
+        // Match the rest of the export controls: settings unlock only after
+        // the batch reaches its pause checkpoint, never mid-render.
+        .disabled(model.isSettingsLocked)
         .popover(isPresented: $isWidthPickerPresented, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(t("export.width"))
@@ -306,8 +439,8 @@ struct ContentView: View {
 
     private var outputWidthChoices: [Int] { [1920, 2560, 3840, 5120, 7680, 12_000] }
 
-    private var controlPanel: some View {
-        VStack(alignment: .leading, spacing: 20) {
+    private func controlPanel(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 10 : 18) {
             HStack(spacing: 12) {
                 ShotTesseraMark(language: language)
                 VStack(alignment: .leading, spacing: 2) {
@@ -319,16 +452,16 @@ struct ContentView: View {
                 }
             }
 
-            VideoBatchCard(jobs: model.videoJobs, language: language, isTargeted: model.isDropTargeted, isLocked: model.isQueueLocked) {
+            VideoBatchCard(jobs: model.videoJobs, language: language, isTargeted: model.isDropTargeted, isLocked: model.isQueueLocked, isLightAppearance: isLightAppearance, isCompact: compact) {
                 model.chooseVideo()
             } clear: {
                 model.clearVideos()
             }
 
-            VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: compact ? 8 : 12) {
                 GlyphLabel(title: t("section.grid"), glyph: .grid)
                     .font(.system(size: 13, weight: .semibold))
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: compact ? 8 : 10)], spacing: compact ? 8 : 10) {
                     ForEach(StoryboardGrid.availableSides, id: \.self) { side in
                         Button {
                             model.gridSide = side
@@ -336,7 +469,7 @@ struct ContentView: View {
                             Text("\(side) × \(side)")
                                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
+                                .padding(.vertical, compact ? 6 : 8)
                         }
                         .buttonStyle(GridChoiceStyle(isSelected: model.gridSide == side))
                         .disabled(model.isSettingsLocked)
@@ -344,14 +477,14 @@ struct ContentView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: compact ? 6 : 9) {
                 HStack {
                     GlyphLabel(title: t("section.frame"), glyph: .layers)
                         .font(.system(size: 13, weight: .semibold))
                 }
                 LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible())],
-                    spacing: 8
+                    columns: [GridItem(.flexible(), spacing: compact ? 8 : 10), GridItem(.flexible())],
+                    spacing: compact ? 8 : 10
                 ) {
                     aspectSelector
                     widthSelector
@@ -379,7 +512,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: compact ? 7 : 12) {
                 HStack(spacing: 7) {
                     GlyphLabel(title: t("section.export"), glyph: .export)
                         .font(.system(size: 13, weight: .semibold))
@@ -396,7 +529,7 @@ struct ContentView: View {
                             Text(format.rawValue)
                                 .font(.system(size: 12, weight: .semibold))
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
+                                .padding(.vertical, compact ? 6 : 8)
                         }
                         .buttonStyle(GridChoiceStyle(isSelected: model.format == format))
                         .disabled(model.isSettingsLocked)
@@ -404,23 +537,23 @@ struct ContentView: View {
                 }
             }
 
-            Spacer(minLength: 0)
-            Button(action: model.generate) {
-                HStack(spacing: 9) {
-                    if model.isProcessing { ProgressView().controlSize(.small) }
-                    ProjectIcon(symbol: .wand, size: 17)
-                    Text(model.isProcessing ? model.processingLabel : model.primaryButtonTitle)
+            VStack(spacing: 8) {
+                Button(action: model.generate) {
+                    HStack(spacing: 9) {
+                        if model.isProcessing { ProgressView().controlSize(.small) }
+                        ProjectIcon(symbol: .wand, size: 17)
+                        Text(model.isProcessing ? model.processingLabel : model.primaryButtonTitle)
+                    }
+                    .font(.system(size: 15, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, compact ? 12 : 14)
                 }
-                .font(.system(size: 15, weight: .bold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!model.hasVideos || model.isBusy)
-            .accessibilityLabel(model.isProcessing ? t("accessibility.generating") : t("accessibility.generate"))
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!model.hasVideos || model.isBusy)
+                .accessibilityLabel(model.isProcessing ? t("accessibility.generating") : t("accessibility.generate"))
 
-            if model.isProcessing {
-                HStack(spacing: 8) {
+                if model.isProcessing {
+                    HStack(spacing: 8) {
                     Button {
                         if model.isPaused {
                             isResumeConfirmationPresented = true
@@ -447,40 +580,44 @@ struct ContentView: View {
                             .padding(.vertical, 8)
                     }
                     .buttonStyle(ProcessingControlButtonStyle(tone: .destructive))
+                    }
+                    ProgressView(value: model.progress)
+                        .tint(Color(red: 0.38, green: 0.82, blue: 0.92))
+                        .accessibilityLabel(t("accessibility.analyzing"))
+                        .accessibilityValue("\(Int(model.progress * 100))%")
                 }
-                ProgressView(value: model.progress)
-                    .tint(Color(red: 0.38, green: 0.82, blue: 0.92))
-                    .accessibilityLabel(t("accessibility.analyzing"))
-                    .accessibilityValue("\(Int(model.progress * 100))%")
-            }
 
-            if model.hasFailedJobs && !model.isProcessing {
-                HStack(spacing: 8) {
-                    Button {
-                        model.retryFailedJobs()
-                    } label: {
-                        GlyphLabel(title: t("button.retryFailed", model.failedJobCount), glyph: .refresh, glyphSize: 13)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                    }
-                    .buttonStyle(ProcessingControlButtonStyle(tone: .primary))
+                if model.hasFailedJobs && !model.isProcessing {
+                    HStack(spacing: 8) {
+                        if model.hasRetryableFailedJobs {
+                            Button {
+                                model.retryFailedJobs()
+                            } label: {
+                                GlyphLabel(title: t("button.retryFailed", model.retryableFailedJobCount), glyph: .refresh, glyphSize: 13)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                            }
+                            .buttonStyle(ProcessingControlButtonStyle(tone: .primary))
+                        }
 
-                    Button {
-                        isFailureReportPresented = true
-                    } label: {
-                        GlyphLabel(title: t("button.failureDetails"), glyph: .eye, glyphSize: 13)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                        Button {
+                            isFailureReportPresented = true
+                        } label: {
+                            GlyphLabel(title: t("button.failureDetails"), glyph: .eye, glyphSize: 13)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(ProcessingControlButtonStyle(tone: .secondary))
                     }
-                    .buttonStyle(ProcessingControlButtonStyle(tone: .secondary))
                 }
             }
         }
-        .padding(24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(compact ? 18 : 30)
+        .background(panelFill, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(.white.opacity(0.11))
+                .strokeBorder(panelBorder)
         }
     }
 
@@ -505,7 +642,7 @@ struct ContentView: View {
 
     private var previewPanel: some View {
         VStack(spacing: 18) {
-            HStack {
+            HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(t("preview.title"))
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
@@ -523,7 +660,8 @@ struct ContentView: View {
                         gridSide: model.activeGridSide,
                         cardAspectRatio: model.activeCardAspectRatio,
                         language: language,
-                        frames: model.livePreviewFrames
+                        frames: model.livePreviewFrames,
+                        isLightAppearance: isLightAppearance
                     )
                 } else if let image = model.previewImage {
                     VStack(spacing: 14) {
@@ -579,6 +717,7 @@ struct ContentView: View {
                                         .padding(.vertical, 8)
                                 }
                                 .buttonStyle(ExportButtonStyle())
+                                .disabled(model.isLoadingPreview)
                             }
 
                             if let request = model.manualEditorRequest {
@@ -598,29 +737,18 @@ struct ContentView: View {
                         }
                     }
                 } else {
-                    EmptyPreview(language: language)
+                    EmptyPreview(language: language, isLightAppearance: isLightAppearance)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(28)
-        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(panelFill, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(.white.opacity(0.10))
+                .strokeBorder(panelBorder)
         }
     }
-}
-
-struct RenderedStoryboardPreview: Identifiable {
-    let id = UUID()
-    let image: NSImage
-    let data: Data
-    let storyboard: StoryboardResult
-    let format: ExportFormat
-    var savedURL: URL?
-    let jobIndex: Int
-    let jobCount: Int
 }
 
 @MainActor
@@ -653,12 +781,15 @@ final class StoryboardViewModel: ObservableObject {
     @Published private(set) var isApplyingFrameAdjustments = false
     @Published private(set) var completedPreviews: [RenderedStoryboardPreview] = []
     @Published private(set) var selectedPreviewIndex = 0
+    @Published private(set) var isLoadingPreview = false
     fileprivate var generationTask: Task<Void, Never>?
     private var generationRunID = UUID()
     private var generationControl: BatchRunControl?
     private var pendingData: Data?
     private var pendingSource: URL?
     private var pendingFormat: ExportFormat?
+    private var previewImageStore = PreviewImageStore()
+    private var previewLoadID = UUID()
 
     private func t(_ key: String, _ arguments: CVarArg...) -> String {
         language.text(key, arguments: arguments)
@@ -669,16 +800,21 @@ final class StoryboardViewModel: ObservableObject {
     var isSettingsLocked: Bool { (isProcessing && !isPaused) || isApplyingFrameAdjustments }
     var isQueueLocked: Bool { isProcessing || isApplyingFrameAdjustments }
     var failedJobs: [VideoJob] { videoJobs.filter { $0.state.failureMessage != nil } }
+    var retryableFailedJobs: [VideoJob] { failedJobs.filter { $0.state.canRetry } }
+    var transcodingJobs: [VideoJob] { failedJobs.filter { $0.state.needsTranscoding } }
     var failedJobCount: Int { failedJobs.count }
+    var retryableFailedJobCount: Int { retryableFailedJobs.count }
+    var hasRetryableFailedJobs: Bool { !retryableFailedJobs.isEmpty }
     var hasFailedJobs: Bool { !failedJobs.isEmpty }
     fileprivate var manualEditorRequest: ManualFrameEditorRequest? {
-        guard !isBusy, completedPreviews.indices.contains(selectedPreviewIndex) else { return nil }
+        guard !isBusy, !isLoadingPreview, completedPreviews.indices.contains(selectedPreviewIndex) else { return nil }
         let preview = completedPreviews[selectedPreviewIndex]
         return ManualFrameEditorRequest(
             previewID: preview.id,
-            sourceURL: preview.storyboard.sourceURL,
-            selectionLimit: max(1, preview.storyboard.frames.count),
-            duration: preview.storyboard.duration
+            sourceURL: preview.sourceURL,
+            selectionLimit: max(1, preview.frameCount),
+            duration: preview.duration,
+            outputWidth: preview.settings.safeWidth
         )
     }
     var canBrowseCompletedPreviews: Bool { completedPreviews.count > 1 }
@@ -747,6 +883,9 @@ final class StoryboardViewModel: ObservableObject {
         pendingSource = nil
         pendingFormat = nil
         completedPreviews = []
+        previewImageStore = PreviewImageStore()
+        previewLoadID = UUID()
+        isLoadingPreview = false
         selectedPreviewIndex = 0
     }
 
@@ -756,8 +895,7 @@ final class StoryboardViewModel: ObservableObject {
         guard !fileProviders.isEmpty else { return false }
         for provider in fileProviders {
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { [weak self] item, _ in
-                guard let data = item as? Data,
-                      let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                guard let url = DroppedVideoURL.decode(item) else { return }
                 Task { @MainActor [weak self] in
                     self?.addVideos([url])
                 }
@@ -773,7 +911,7 @@ final class StoryboardViewModel: ObservableObject {
 
     func retryFailedJobs() {
         guard !isBusy else { return }
-        let indices = videoJobs.indices.filter { videoJobs[$0].state.failureMessage != nil }
+        let indices = videoJobs.indices.filter { videoJobs[$0].state.canRetry }
         guard !indices.isEmpty else { return }
         for index in indices { videoJobs[index].state = .queued }
         startGeneration(indices: indices, resetPreviews: false)
@@ -806,6 +944,9 @@ final class StoryboardViewModel: ObservableObject {
         pendingFormat = nil
         if resetPreviews {
             completedPreviews = []
+            previewImageStore = PreviewImageStore()
+            previewLoadID = UUID()
+            isLoadingPreview = false
             selectedPreviewIndex = 0
         }
         let analyzer = VideoStoryboardAnalyzer()
@@ -855,7 +996,8 @@ final class StoryboardViewModel: ObservableObject {
                         }
                     )
                     let data = try StoryboardComposer.render(result: result, settings: currentSettings)
-                    await bridge.finishJob(data: data, result: result, settings: currentSettings, index: job.index, total: selectedJobs.count)
+                    let canContinue = await bridge.finishJob(data: data, result: result, settings: currentSettings, index: job.index, total: selectedJobs.count)
+                    if !canContinue { break }
                 } catch is CancellationError {
                     await bridge.cancelled()
                     return
@@ -866,8 +1008,8 @@ final class StoryboardViewModel: ObservableObject {
                     } else {
                         language = await bridge.currentLanguage()
                     }
-                    let message = (error as? StoryboardError)?.message(in: language) ?? error.localizedDescription
-                    await bridge.failJob(index: job.index, message: message)
+                    let failure = VideoFailure.classify(error, language: language)
+                    await bridge.failJob(index: job.index, failure: failure)
                 }
             }
             await bridge.finishBatch()
@@ -940,41 +1082,57 @@ final class StoryboardViewModel: ObservableObject {
         progress = max(progress, 0.72 + 0.26 * Double(index) / Double(max(1, total)))
     }
 
-    func completeJob(data: Data, result: StoryboardResult, settings: ExportSettings, index: Int, total: Int) {
-        guard let image = NSImage(data: data) else {
-            markJobFailed(index: index, message: t("error.noExportData"))
-            return
-        }
-        var savedURL: URL?
+    @discardableResult
+    func completeJob(data: Data, result: StoryboardResult, settings: ExportSettings, index: Int, total: Int, runID: UUID? = nil) async -> Bool {
+        let output: PreparedStoryboardOutput
         do {
-            let destination = ExportDestination.nextURL(for: result.sourceURL, format: settings.format)
-            try data.write(to: destination, options: .atomic)
-            if videoJobs.indices.contains(index) { videoJobs[index].state = .completed(destination.lastPathComponent) }
-            savedURL = destination
-        } catch {
-            if videoJobs.indices.contains(index) { videoJobs[index].state = .failed(error.localizedDescription) }
-        }
-
-        completedPreviews.append(
-            RenderedStoryboardPreview(
-                image: image,
-                data: data,
-                storyboard: result,
-                format: settings.format,
-                savedURL: savedURL,
-                jobIndex: index,
-                jobCount: total
+            output = try await StoryboardOutputWriter.shared.prepare(
+                data: data, result: result, settings: settings,
+                jobIndex: index, jobCount: total, previewStore: previewImageStore
             )
-        )
-        selectPreview(at: completedPreviews.count - 1)
-        if savedURL == nil {
+        } catch is CancellationError {
+            return false
+        } catch {
+            guard acceptsGenerationUpdate(for: runID) else { return false }
+            markJobFailed(index: index, failure: VideoFailure.classify(error, language: settings.language))
+            return true
+        }
+        guard acceptsGenerationUpdate(for: runID) else { return false }
+        let preview = output.preview
+        if videoJobs.indices.contains(index) {
+            if let savedURL = preview.savedURL {
+                videoJobs[index].state = .completed(savedURL.lastPathComponent)
+            } else {
+                videoJobs[index].state = .failed(.retryable(output.saveFailure ?? t("error.noExportData")))
+            }
+        }
+        completedPreviews.append(preview)
+        selectPreview(at: completedPreviews.count - 1, presentation: output.presentation)
+        if preview.savedURL == nil {
             outputDescription = t("status.generatedNotSaved", index + 1, total)
         }
+        // If neither destination nor session cache can be written, keep this
+        // one result in memory and stop before accumulating an unbounded batch.
+        if preview.fallbackData != nil {
+            errorMessage = t("error.previewStorage")
+            showError = true
+            return false
+        }
+        return true
     }
 
     func markJobFailed(index: Int, message: String) {
-        if videoJobs.indices.contains(index) { videoJobs[index].state = .failed(message) }
+        markJobFailed(index: index, failure: .retryable(message))
+    }
+
+    func markJobFailed(index: Int, failure: VideoFailure) {
+        if videoJobs.indices.contains(index) { videoJobs[index].state = .failed(failure) }
         outputDescription = t("status.failedContinue", index + 1)
+    }
+
+    func showSourceFiles(for jobs: [VideoJob]) {
+        guard !jobs.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(jobs.map(\.url))
     }
 
     func finishBatch() {
@@ -1013,23 +1171,32 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     func save(data: Data, source: URL, format: ExportFormat) {
+        let targetPreviewID = completedPreviews.indices.contains(selectedPreviewIndex)
+            ? completedPreviews[selectedPreviewIndex].id : nil
         let panel = NSSavePanel()
         panel.allowedContentTypes = [format == .png ? .png : .jpeg]
         panel.directoryURL = source.deletingLastPathComponent()
         panel.nameFieldStringValue = ExportDestination.nextURL(for: source, format: format).lastPathComponent
         panel.begin { response in
             guard response == .OK, let destination = panel.url else { return }
-            do {
-                try data.write(to: destination, options: .atomic)
-                self.lastSavedURL = destination
-                if self.completedPreviews.indices.contains(self.selectedPreviewIndex) {
-                    self.completedPreviews[self.selectedPreviewIndex].savedURL = destination
+            Task { @MainActor in
+                do {
+                    try await StoryboardOutputWriter.shared.save(data, to: destination)
+                    if let index = self.completedPreviews.firstIndex(where: { $0.id == targetPreviewID }) {
+                        self.completedPreviews[index].savedURL = destination
+                        let jobIndex = self.completedPreviews[index].jobIndex
+                        if self.videoJobs.indices.contains(jobIndex) {
+                            self.videoJobs[jobIndex].state = .completed(destination.lastPathComponent)
+                        }
+                        if index == self.selectedPreviewIndex {
+                            self.lastSavedURL = destination
+                            self.outputDescription = self.t("status.manualSaved", destination.lastPathComponent)
+                        }
+                    }
+                } catch {
+                    self.errorMessage = error.localizedDescription
+                    self.showError = true
                 }
-                self.outputDescription = self.t("status.manualSaved", destination.lastPathComponent)
-            }
-            catch {
-                self.errorMessage = error.localizedDescription
-                self.showError = true
             }
         }
     }
@@ -1053,21 +1220,16 @@ final class StoryboardViewModel: ObservableObject {
         sourceURL: URL,
         duration: Double
     ) {
-        guard !frames.isEmpty, !isApplyingFrameAdjustments else { return }
+        guard !frames.isEmpty, !isBusy,
+              let target = completedPreviews.first(where: { $0.id == targetPreviewID }),
+              frames.count == target.frameCount else { return }
         let updatedResult = StoryboardResult(
             frames: frames,
             sourceURL: sourceURL,
             duration: duration
         )
-        let settings = ExportSettings(
-            gridSide: gridSide,
-            layoutAspect: layoutAspect,
-            language: language,
-            format: format,
-            width: width,
-            showTimestamps: showTimestamps,
-            showTitleWatermark: showTitleWatermark
-        )
+        var settings = target.settings
+        settings.language = language
         isApplyingFrameAdjustments = true
         let bridge = UIStateBridge(model: self)
 
@@ -1093,41 +1255,35 @@ final class StoryboardViewModel: ObservableObject {
         result: StoryboardResult,
         settings: ExportSettings,
         targetPreviewID: RenderedStoryboardPreview.ID
-    ) {
+    ) async {
         defer { isApplyingFrameAdjustments = false }
-        guard let image = NSImage(data: data) else {
-            outputDescription = t("status.generatedNotSaved", 1, 1)
-            return
-        }
         guard let targetIndex = completedPreviews.firstIndex(where: { $0.id == targetPreviewID }) else {
             return
         }
-        var savedURL: URL?
-        do {
-            let destination = ExportDestination.nextURL(for: result.sourceURL, format: settings.format)
-            try data.write(to: destination, options: .atomic)
-            savedURL = destination
-            if let jobIndex = videoJobs.firstIndex(where: { $0.url.standardizedFileURL == result.sourceURL.standardizedFileURL }) {
-                videoJobs[jobIndex].state = .completed(destination.lastPathComponent)
-            }
-        } catch {
-            savedURL = nil
-        }
-
         let existing = completedPreviews[targetIndex]
-        let updated = RenderedStoryboardPreview(
-            image: image,
-            data: data,
-            storyboard: result,
-            format: settings.format,
-            savedURL: savedURL,
-            jobIndex: existing.jobIndex,
-            jobCount: existing.jobCount
-        )
+        let output: PreparedStoryboardOutput
+        do {
+            output = try await StoryboardOutputWriter.shared.prepare(
+                data: data, result: result, settings: settings,
+                jobIndex: existing.jobIndex, jobCount: existing.jobCount,
+                id: existing.id, previewStore: previewImageStore
+            )
+        } catch {
+            markFrameEditFailed((error as? StoryboardError)?.message(in: settings.language) ?? error.localizedDescription)
+            return
+        }
+        let updated = output.preview
         completedPreviews[targetIndex] = updated
+        if videoJobs.indices.contains(existing.jobIndex) {
+            if let savedURL = updated.savedURL {
+                videoJobs[existing.jobIndex].state = .completed(savedURL.lastPathComponent)
+            } else {
+                videoJobs[existing.jobIndex].state = .failed(.retryable(output.saveFailure ?? t("error.noExportData")))
+            }
+        }
         if selectedPreviewIndex == targetIndex {
-            selectPreview(at: targetIndex)
-            if let savedURL {
+            selectPreview(at: targetIndex, presentation: output.presentation)
+            if let savedURL = updated.savedURL {
                 outputDescription = t("status.manualSaved", savedURL.lastPathComponent)
             } else {
                 outputDescription = t("status.generatedNotSaved", 1, 1)
@@ -1141,13 +1297,14 @@ final class StoryboardViewModel: ObservableObject {
         showError = true
     }
 
-    private func selectPreview(at index: Int) {
+    private func selectPreview(at index: Int, presentation: PreparedPreviewPresentation? = nil) {
         guard completedPreviews.indices.contains(index) else { return }
-        selectedPreviewIndex = index
         let preview = completedPreviews[index]
-        previewImage = preview.image
-        pendingData = preview.data
-        pendingSource = preview.storyboard.sourceURL
+        selectedPreviewIndex = index
+        let loadID = UUID()
+        previewLoadID = loadID
+        pendingData = nil
+        pendingSource = preview.sourceURL
         pendingFormat = preview.format
         renderedFormat = preview.format
         lastSavedURL = preview.savedURL
@@ -1156,6 +1313,31 @@ final class StoryboardViewModel: ObservableObject {
         } else {
             outputDescription = t("status.generatedNotSaved", preview.jobIndex + 1, preview.jobCount)
         }
+        if let presentation {
+            applyPreviewPresentation(presentation)
+            return
+        }
+        isLoadingPreview = true
+        Task { @MainActor [weak self] in
+            do {
+                let presentation = try await Task.detached(priority: .userInitiated) {
+                    try preview.loadPresentation()
+                }.value
+                guard let self, self.previewLoadID == loadID else { return }
+                self.applyPreviewPresentation(presentation)
+            } catch {
+                guard let self, self.previewLoadID == loadID else { return }
+                self.isLoadingPreview = false
+                self.errorMessage = error.localizedDescription
+                self.showError = true
+            }
+        }
+    }
+
+    private func applyPreviewPresentation(_ presentation: PreparedPreviewPresentation) {
+        previewImage = NSImage(cgImage: presentation.image, size: .zero)
+        pendingData = presentation.pendingData
+        isLoadingPreview = false
     }
 
     fileprivate func acceptsGenerationUpdate(for runID: UUID?) -> Bool {
@@ -1212,17 +1394,16 @@ private final class UIStateBridge: @unchecked Sendable {
         }
     }
 
-    func finishJob(data: Data, result: StoryboardResult, settings: ExportSettings, index: Int, total: Int) async {
-        await MainActor.run { [weak self] in
-            guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
-            model.completeJob(data: data, result: result, settings: settings, index: index, total: total)
-        }
+    @MainActor
+    func finishJob(data: Data, result: StoryboardResult, settings: ExportSettings, index: Int, total: Int) async -> Bool {
+        guard let model, acceptsCurrentGeneration(model) else { return false }
+        return await model.completeJob(data: data, result: result, settings: settings, index: index, total: total, runID: generationRunID)
     }
 
-    func failJob(index: Int, message: String) async {
+    func failJob(index: Int, failure: VideoFailure) async {
         await MainActor.run { [weak self] in
             guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
-            model.markJobFailed(index: index, message: message)
+            model.markJobFailed(index: index, failure: failure)
         }
     }
 
@@ -1267,20 +1448,19 @@ private final class UIStateBridge: @unchecked Sendable {
         }
     }
 
+    @MainActor
     func finishEditedFrames(
         data: Data,
         result: StoryboardResult,
         settings: ExportSettings,
         targetPreviewID: RenderedStoryboardPreview.ID
     ) async {
-        await MainActor.run { [weak self] in
-            self?.model?.completeEditedFrames(
+        await model?.completeEditedFrames(
                 data: data,
                 result: result,
                 settings: settings,
                 targetPreviewID: targetPreviewID
             )
-        }
     }
 
     func failEditedFrames(message: String) async {
@@ -1294,6 +1474,7 @@ private struct ManualFrameEditor: View {
     @ObservedObject var model: StoryboardViewModel
     let sourceURL: URL
     let selectionLimit: Int
+    let outputWidth: Int
     let language: AppLanguage
     let onApply: ([CapturedFrame]) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -1495,7 +1676,7 @@ private struct ManualFrameEditor: View {
         captureError = ""
         isLoadingCandidates = true
         isSmartSelecting = false
-        let outputWidth = model.width
+        let outputWidth = outputWidth
         let gridSide = max(1, Int(Double(selectionLimit).squareRoot().rounded()))
         let requestedCount = min(72, max(24, selectionLimit * 3))
         let batch = candidateBatch
@@ -1601,6 +1782,8 @@ private struct BatchFailureReport: View {
     let jobs: [VideoJob]
     let language: AppLanguage
     let retry: () -> Void
+    let showSources: () -> Void
+    let showTranscodingGuide: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     private func t(_ key: String, _ arguments: CVarArg...) -> String {
@@ -1619,9 +1802,19 @@ private struct BatchFailureReport: View {
 
             List(jobs) { job in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(job.url.lastPathComponent)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
+                    HStack(spacing: 7) {
+                        Text(job.url.lastPathComponent)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        if job.state.needsTranscoding {
+                            Text(t("failureReport.transcoding.badge"))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.orange.opacity(0.12), in: Capsule())
+                        }
+                    }
                     Text(job.state.failureMessage ?? t("failureReport.unknown"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -1634,14 +1827,83 @@ private struct BatchFailureReport: View {
             HStack {
                 Button(t("button.close")) { dismiss() }
                 Spacer()
-                Button(action: retry) {
-                    GlyphLabel(title: t("button.retryFailed", jobs.count), glyph: .refresh)
+                if !jobs.isEmpty {
+                    Button(action: showSources) {
+                        GlyphLabel(title: t("failureReport.showSources"), glyph: .folder)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
+                if jobs.contains(where: { $0.state.needsTranscoding }) {
+                    Button(action: showTranscodingGuide) {
+                        GlyphLabel(title: t("failureReport.transcodingGuide"), glyph: .eye)
+                    }
+                }
+                let retryableCount = jobs.filter { $0.state.canRetry }.count
+                if retryableCount > 0 {
+                    Button(action: retry) {
+                        GlyphLabel(title: t("button.retryFailed", retryableCount), glyph: .refresh)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             }
         }
         .padding(22)
         .frame(width: 560, height: 450)
+    }
+}
+
+private struct TranscodingGuide: View {
+    let language: AppLanguage
+    @Environment(\.dismiss) private var dismiss
+
+    private func t(_ key: String, _ arguments: CVarArg...) -> String {
+        language.text(key, arguments: arguments)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(t("transcoding.title"))
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+            Text(t("transcoding.intro"))
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 11) {
+                TranscodingStep(index: "1", text: t("transcoding.step.one"))
+                TranscodingStep(index: "2", text: t("transcoding.step.two"))
+                TranscodingStep(index: "3", text: t("transcoding.step.three"))
+            }
+
+            Text(t("transcoding.tip"))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button(t("button.close")) { dismiss() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 500)
+    }
+}
+
+private struct TranscodingStep: View {
+    let index: String
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(index)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 22, height: 22)
+                .background(Color.accentColor.opacity(0.12), in: Circle())
+            Text(text)
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
@@ -1650,11 +1912,13 @@ private struct VideoBatchCard: View {
     let language: AppLanguage
     let isTargeted: Bool
     let isLocked: Bool
+    let isLightAppearance: Bool
+    let isCompact: Bool
     let choose: () -> Void
     let clear: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: isCompact ? 7 : 10) {
             Button(action: choose) {
                 HStack(spacing: 12) {
                     ProjectIcon(symbol: jobs.isEmpty ? .filmStack : .film, size: 19)
@@ -1671,18 +1935,28 @@ private struct VideoBatchCard: View {
                     ProjectIcon(symbol: .plus, size: 14)
                         .foregroundStyle(.secondary)
                 }
-                .padding(15)
-                .background(Color.white.opacity(isTargeted ? 0.15 : 0.065), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(isCompact ? 12 : 15)
+                .background(
+                    isLightAppearance
+                        ? Color.white.opacity(isTargeted ? 0.90 : 0.58)
+                        : Color.white.opacity(isTargeted ? 0.15 : 0.065),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(isTargeted ? Color(red: 0.42, green: 0.85, blue: 0.91) : .white.opacity(0.10), style: StrokeStyle(lineWidth: 1, dash: jobs.isEmpty ? [5, 4] : []))
+                        .strokeBorder(
+                            isTargeted
+                                ? Color(red: 0.42, green: 0.85, blue: 0.91)
+                                : (isLightAppearance ? Color(red: 0.66, green: 0.72, blue: 0.84).opacity(0.58) : .white.opacity(0.10)),
+                            style: StrokeStyle(lineWidth: 1, dash: jobs.isEmpty ? [5, 4] : [])
+                        )
                 }
             }
             .buttonStyle(.plain)
             .disabled(isLocked)
 
             if !jobs.isEmpty {
-                VStack(spacing: 5) {
+                VStack(spacing: isCompact ? 4 : 6) {
                     ForEach(Array(jobs.prefix(3))) { job in
                         HStack(spacing: 7) {
                             Circle()
@@ -1767,6 +2041,7 @@ private struct ProgressiveStoryboardPreview: View {
     let cardAspectRatio: Double
     let language: AppLanguage
     let frames: [NSImage]
+    let isLightAppearance: Bool
 
     var body: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: gridSide)
@@ -1799,13 +2074,18 @@ private struct ProgressiveStoryboardPreview: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(previewWellFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .animation(.easeOut(duration: 0.16), value: frames.count)
+    }
+
+    private var previewWellFill: Color {
+        isLightAppearance ? Color(red: 0.77, green: 0.80, blue: 0.86) : Color.black.opacity(0.14)
     }
 }
 
 private struct EmptyPreview: View {
     let language: AppLanguage
+    let isLightAppearance: Bool
 
     var body: some View {
         VStack(spacing: 18) {
@@ -1820,14 +2100,18 @@ private struct EmptyPreview: View {
                 .frame(maxWidth: 310)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(previewWellFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private var previewWellFill: Color {
+        isLightAppearance ? Color(red: 0.77, green: 0.80, blue: 0.86) : Color.black.opacity(0.14)
     }
 }
 
 private enum PreviewText {
-    /// Explicit colors keep the copy readable even when macOS resolves the window as light appearance.
-    static let primary = Color(red: 0.84, green: 0.94, blue: 1.00)
-    static let secondary = Color(red: 0.62, green: 0.76, blue: 0.91)
+    /// Semantic colors stay legible in each user-selected appearance.
+    static let primary = Color.primary
+    static let secondary = Color.secondary
 }
 
 private enum SelectionPalette {
@@ -1837,10 +2121,24 @@ private enum SelectionPalette {
 
 private struct GridChoiceStyle: ButtonStyle {
     let isSelected: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(isSelected ? Color(red: 0.06, green: 0.08, blue: 0.11) : .primary)
-            .background(isSelected ? SelectionPalette.active : Color.white.opacity(configuration.isPressed ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(
+                isSelected ? SelectionPalette.active : idleFill(isPressed: configuration.isPressed),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+    }
+
+    private func idleFill(isPressed: Bool) -> Color {
+        guard colorScheme == .light else {
+            return Color.white.opacity(isPressed ? 0.14 : 0.06)
+        }
+        return isPressed
+            ? Color(red: 0.83, green: 0.87, blue: 0.94)
+            : Color(red: 0.90, green: 0.92, blue: 0.97)
     }
 }
 
@@ -1901,14 +2199,27 @@ private struct ManualAdjustmentButtonStyle: ButtonStyle {
     }
 }
 
-private extension View {
-    func compactOptionSurface() -> some View {
-        padding(.horizontal, 9)
+private struct CompactOptionSurface: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        let isLight = colorScheme == .light
+        return content
+            .padding(.horizontal, 9)
             .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
-            .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .background(
+                isLight ? Color(red: 0.90, green: 0.92, blue: 0.97) : Color.white.opacity(0.065),
+                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(.white.opacity(0.08))
+                    .strokeBorder(isLight ? Color(red: 0.65, green: 0.70, blue: 0.82).opacity(0.48) : .white.opacity(0.08))
             }
+    }
+}
+
+private extension View {
+    func compactOptionSurface() -> some View {
+        modifier(CompactOptionSurface())
     }
 }

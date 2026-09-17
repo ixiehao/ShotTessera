@@ -8,8 +8,8 @@
     <string>视频一键截屏拼图</string>
     <key>CFBundleExecutable</key>
     <string>ShotTessera</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
     <key>CFBundleIdentifier</key>
     <string>com.shottessera.videoscreenshotcollage</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -20,8 +20,8 @@
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>0.2.5</string>
-    <key>CFBundleVersion</key>
-    <string>11</string>
+	<key>CFBundleVersion</key>
+	<string>15</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>NSHighResolutionCapable</key>

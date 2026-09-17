@@ -13,3 +13,12 @@ The font file is an unmodified upstream copy. It is bundled only so exported
 title watermarks render consistently; it is registered for the app process and
 is not installed into the user's system font library. The complete license text
 is provided in [ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt](ThirdPartyLicenses/NotoSansCJK-OFL-1.1.txt).
+
+## Build-only packaging tools
+
+- `dmgbuild` 1.6.7 — MIT License
+- `ds-store` 1.3.3 — MIT License
+- `mac-alias` 2.2.3 — MIT License
+
+These tools generate and verify the DMG during a local release build only.
+They are not bundled with, linked into, or executed by the distributed app.
