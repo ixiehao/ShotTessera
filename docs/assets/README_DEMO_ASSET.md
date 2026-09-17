@@ -1,7 +1,8 @@
 # README Demo Asset
 
-`video-to-storyboard-demo.gif`, its PNG fallback, and
-`video-to-storyboard-overview.png` are project documentation assets built from
+`video-to-storyboard-demo.gif`, its PNG fallback,
+`video-to-storyboard-overview.png`, `social-preview.jpg`, and
+`social-preview-v2.jpg` are project documentation assets built from
 real footage shot and supplied by the project owner. The original 406 MB video
 is deliberately not committed or redistributed.
 
@@ -40,6 +41,23 @@ The earlier all-synthetic renderer remains available as
 `scripts/create_readme_demo.swift` for tests or environments where the approved
 owner footage is unavailable. The committed real-footage derivative assets are
 released with the project documentation under the [MIT License](../../LICENSE).
+
+## Social preview assets
+
+`social-preview.jpg` and `social-preview-v2.jpg` are static 1280 × 640 cards,
+not frames from the GIF. They use `video-to-storyboard-overview.png`, so their
+featured source frame and 3 × 3 result are both derived from the approved
+owner-shot footage. This makes either card safe to use as a link preview or an
+IM/social cover where animated media may show only its first frame.
+
+To regenerate both cards:
+
+```sh
+swift scripts/create_social_preview.swift \
+  docs/assets/video-to-storyboard-overview.png \
+  docs/assets/social-preview.jpg \
+  docs/assets/social-preview-v2.jpg
+```
 
 ## Installation guides
 
