@@ -3,28 +3,39 @@
 All notable user-facing changes are recorded here. Stable releases remain
 available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/releases).
 
+## v0.2.6
+
+### 中文
+
+- 新增浅色、深色与跟随系统外观；优化窗口恢复和三语言布局。
+- 提升超大批次稳定性：后台保存、低内存历史预览与更准确的失败处理。
+
+### English
+
+- Added Light, Dark, and System appearance modes; improved window restoration and three-language layouts.
+- Improved large-batch reliability with background saves, low-memory history, and clearer failure handling.
+
+### 日本語
+
+- ライト、ダーク、システム連動表示を追加し、ウインドウ復元と 3 言語レイアウトを改善しました。
+- バックグラウンド保存、省メモリ履歴、明確な失敗処理で大規模バッチを安定化しました。
+
 ## v0.2.5
 
 ### 中文
 
 - 新增 GitHub 更新提醒：主界面、关于与帮助均可直接前往下载新版本。
 - 更新检查仅读取公开版本信息，不上传视频或使用数据。
-- 新增浅色、深色与跟随系统外观；优化窗口恢复和三语言布局。
-- 提升超大批次稳定性：后台保存、低内存历史预览与更准确的失败处理。
 
 ### English
 
 - Added GitHub update reminders in the main window, About panel, and Help menu.
 - Update checks read public release metadata only; no video or usage data is sent.
-- Added Light, Dark, and System appearance modes; improved window restoration and three-language layouts.
-- Improved large-batch reliability with background saves, low-memory history, and clearer failure handling.
 
 ### 日本語
 
 - メイン画面、情報画面、ヘルプメニューに GitHub の更新通知を追加しました。
 - 更新確認は公開リリース情報のみを読み取り、動画や利用データを送信しません。
-- ライト、ダーク、システム連動表示を追加し、ウインドウ復元と 3 言語レイアウトを改善しました。
-- バックグラウンド保存、省メモリ履歴、明確な失敗処理で大規模バッチを安定化しました。
 
 ## v0.2.4
 
