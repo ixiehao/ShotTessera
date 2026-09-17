@@ -4,10 +4,6 @@
 
 ![プロジェクト所有者が撮影した湖上映像から ShotTessera が九分割の絵コンテを生成するアニメーション](docs/assets/video-to-storyboard-demo.gif)
 
-![所有者撮影の湖上ボート映像を九分割の絵コンテに変換した、共有用の静止カバー](docs/assets/social-preview-v2.jpg)
-
-SNS・IM・メディア掲載など一枚だけ表示される場面では、GIF 単体ではなく[標準ソーシャルカード](docs/assets/social-preview.jpg)またはこの静止カバーを使用してください。
-
 ShotTessera は、動画から代表的なフレームを選び、一枚の見やすい絵コンテ画像にまとめるネイティブ macOS アプリです。`tessera` はモザイクを構成する小片を意味します。
 
 **まずスマート選択、必要なコマだけ手動調整。すべてローカルで完結します。**
