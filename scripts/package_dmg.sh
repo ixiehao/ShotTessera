@@ -3,21 +3,27 @@ set -euo pipefail
 
 readonly project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 readonly product_name="视频一键截屏拼图"
-readonly volume_name="$product_name 安装器"
+readonly volume_name="ShotTessera"
 readonly executable_name="ShotTessera"
 readonly bundle_name="ShotTessera_ShotTesseraApp.bundle"
+readonly version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$project_dir/Packaging/Info.plist")"
 readonly output_dir="$project_dir/dist"
 readonly app_path="$output_dir/$product_name.app"
-readonly dmg_path="$output_dir/$product_name-0.2.3.dmg"
+readonly dmg_path="$output_dir/ShotTessera-$version.dmg"
+readonly checksum_path="$dmg_path.sha256"
 readonly staging_dir="$output_dir/.dmg-staging"
 readonly background_path="$output_dir/.dmg-install-background.png"
 readonly writable_dmg_path="$output_dir/.dmg-writable.dmg"
 
 mounted_device=""
+validation_device=""
 
 cleanup() {
   if [[ -n "$mounted_device" ]]; then
     hdiutil detach "$mounted_device" -quiet || true
+  fi
+  if [[ -n "$validation_device" ]]; then
+    hdiutil detach "$validation_device" -quiet || true
   fi
   rm -rf "$staging_dir" "$writable_dmg_path"
 }
@@ -54,9 +60,7 @@ codesign --verify --deep --strict --verbose=2 "$app_path"
 rm -rf "$staging_dir"
 mkdir -p "$staging_dir/Background"
 ditto "$app_path" "$staging_dir/$product_name.app"
-swift scripts/create_dmg_background.swift \
-  "docs/assets/video-to-storyboard-overview.png" \
-  "$background_path"
+swift scripts/create_dmg_background.swift "$background_path"
 ditto "$background_path" "$staging_dir/Background/install-background.png"
 ditto "Assets/ShotTessera.icns" "$staging_dir/.VolumeIcon.icns"
 ln -s /Applications "$staging_dir/应用程序"
@@ -111,7 +115,7 @@ on run argv
       set current view to icon view
       set toolbar visible to false
       set statusbar visible to false
-      set bounds to {100, 100, 1380, 820}
+      set bounds to {160, 120, 1120, 720}
     end tell
     -- Finder applies view changes asynchronously on recent macOS releases.
     delay 2
@@ -123,13 +127,16 @@ on run argv
       -- Finder accepts a constrained set of icon sizes; 128 is supported by
       -- both current and older macOS releases.
       set icon size to 128
-      set text size to 14
+      set text size to 13
       set background picture to backgroundFile
     end tell
     delay 1
     tell installerWindow
-      set position of item appName to {320, 386}
-      set position of item applicationsName to {960, 386}
+      -- Finder's vertical item coordinate describes the top of the icon cell,
+      -- while the horizontal coordinate is its center. At 128 pt, y=252 puts
+      -- both icons' visual centers on the background arrow's horizontal axis.
+      set position of item appName to {260, 252}
+      set position of item applicationsName to {700, 252}
       close
     end tell
     open mountedFolder
@@ -149,4 +156,34 @@ mounted_device=""
 hdiutil convert "$writable_dmg_path" -format UDZO -imagekey zlib-level=9 -ov -o "$dmg_path"
 hdiutil verify "$dmg_path"
 
+# Reopen the compressed artifact read-only and verify the user-facing volume,
+# not only the pre-conversion staging folder. This catches lost Finder metadata,
+# a broken Applications alias, or a missing app before a release is uploaded.
+validation_output="$(hdiutil attach -readonly -noverify -noautoopen "$dmg_path")"
+validation_device="$(printf '%s\n' "$validation_output" | awk '/\/Volumes\// { print $1; exit }')"
+validation_mount="$(printf '%s\n' "$validation_output" | awk 'match($0, /\/Volumes\/.*/) { print substr($0, RSTART); exit }')"
+
+if [[ -z "$validation_device" || -z "$validation_mount" || ! -d "$validation_mount" ]]; then
+  printf 'Unable to remount the final DMG for validation.\n' >&2
+  exit 1
+fi
+
+test -d "$validation_mount/$product_name.app"
+test -L "$validation_mount/应用程序"
+test "$(readlink "$validation_mount/应用程序")" = "/Applications"
+test -f "$validation_mount/.DS_Store"
+test -r "$validation_mount/Background/install-background.png"
+codesign --verify --deep --strict --verbose=2 "$validation_mount/$product_name.app"
+
+readonly packaged_architectures="$(lipo -archs "$validation_mount/$product_name.app/Contents/MacOS/$executable_name")"
+if [[ " $packaged_architectures " != *" arm64 "* || " $packaged_architectures " != *" x86_64 "* ]]; then
+  printf 'Final DMG does not contain a universal arm64 + x86_64 app.\n' >&2
+  exit 1
+fi
+
+hdiutil detach "$validation_device" -quiet
+validation_device=""
+(cd "$output_dir" && shasum -a 256 "$(basename "$dmg_path")" > "$(basename "$checksum_path")")
+
 printf 'Created %s\n' "$dmg_path"
+printf 'Checksum %s\n' "$checksum_path"

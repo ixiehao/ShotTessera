@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-![原创合成示例：视频画面经过智能挑选，生成九宫格分镜图](docs/assets/video-to-storyboard-demo.gif)
+![自摄船行湖面视频经 ShotTessera 智能选帧生成九宫格分镜图](docs/assets/video-to-storyboard-demo.gif)
 
 ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表性的画面，拼成一张干净的分镜图。`tessera` 意为马赛克的小拼片，正对应本项目把镜头组织为整体的方式。
 

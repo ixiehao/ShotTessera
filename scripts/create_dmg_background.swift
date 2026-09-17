@@ -1,44 +1,20 @@
 import AppKit
-import CoreImage
+import Foundation
 
 enum InstallerBackgroundError: Error {
     case invalidArguments
-    case unreadableImage(String)
     case missingGraphicsContext
     case unableToWrite(String)
 }
 
 let arguments = CommandLine.arguments
-guard arguments.count == 3 else {
+guard arguments.count == 2 else {
     throw InstallerBackgroundError.invalidArguments
 }
 
-let sourceURL = URL(fileURLWithPath: arguments[1])
-let outputURL = URL(fileURLWithPath: arguments[2])
-let canvasSize = NSSize(width: 1280, height: 720)
-
-guard let sourceImage = CIImage(contentsOf: sourceURL) else {
-    throw InstallerBackgroundError.unreadableImage(sourceURL.path)
-}
-
-func cover(_ image: CIImage, in size: NSSize) -> CIImage {
-    let sourceExtent = image.extent
-    let scale = max(size.width / sourceExtent.width, size.height / sourceExtent.height)
-    let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-    let x = (size.width - scaled.extent.width) / 2
-    let y = (size.height - scaled.extent.height) / 2
-    return scaled.transformed(by: CGAffineTransform(translationX: x, y: y))
-}
-
-let canvasRect = CGRect(origin: .zero, size: canvasSize)
-let blurredSource = cover(sourceImage, in: canvasSize)
-    .clampedToExtent()
-    .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 26])
-    .cropped(to: canvasRect)
-let ciContext = CIContext(options: [.useSoftwareRenderer: false])
-guard let backgroundCGImage = ciContext.createCGImage(blurredSource, from: canvasRect) else {
-    throw InstallerBackgroundError.unreadableImage(sourceURL.path)
-}
+let outputURL = URL(fileURLWithPath: arguments[1])
+let canvasSize = NSSize(width: 960, height: 600)
+let canvasRect = NSRect(origin: .zero, size: canvasSize)
 
 guard let bitmap = NSBitmapImageRep(
     bitmapDataPlanes: nil,
@@ -51,116 +27,129 @@ guard let bitmap = NSBitmapImageRep(
     colorSpaceName: .deviceRGB,
     bytesPerRow: 0,
     bitsPerPixel: 0
-), let nsGraphicsContext = NSGraphicsContext(bitmapImageRep: bitmap) else {
+), let graphics = NSGraphicsContext(bitmapImageRep: bitmap) else {
     throw InstallerBackgroundError.missingGraphicsContext
 }
+
 bitmap.size = canvasSize
 NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = nsGraphicsContext
-guard let graphicsContext = NSGraphicsContext.current?.cgContext else {
-    throw InstallerBackgroundError.missingGraphicsContext
+NSGraphicsContext.current = graphics
+graphics.imageInterpolation = .high
+
+func color(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, _ alpha: CGFloat = 1) -> NSColor {
+    NSColor(calibratedRed: red, green: green, blue: blue, alpha: alpha)
 }
-
-graphicsContext.draw(backgroundCGImage, in: canvasRect)
-// A quiet, glassy surface keeps the reference imagery recognisable without
-// competing with Finder's real application and Applications icons.
-NSColor(calibratedRed: 0.955, green: 0.970, blue: 0.990, alpha: 0.875).setFill()
-NSBezierPath(rect: canvasRect).fill()
-
-let coolWash = NSGradient(colors: [
-    NSColor(calibratedRed: 0.27, green: 0.71, blue: 0.96, alpha: 0.13),
-    NSColor(calibratedRed: 0.55, green: 0.51, blue: 0.98, alpha: 0.075),
-    NSColor.clear
-])!
-coolWash.draw(
-    fromCenter: NSPoint(x: 640, y: 338),
-    radius: 0,
-    toCenter: NSPoint(x: 640, y: 338),
-    radius: 690,
-    options: [.drawsAfterEndingLocation]
-)
-
-func drawGlassCard(_ rect: NSRect, accent: NSColor) {
-    let path = NSBezierPath(roundedRect: rect, xRadius: 28, yRadius: 28)
-    NSColor.white.withAlphaComponent(0.34).setFill()
-    path.fill()
-    accent.withAlphaComponent(0.19).setStroke()
-    path.lineWidth = 1
-    path.stroke()
-}
-
-// The two panels frame the native Finder icons without replacing them. Their
-// positions match the layout written by package_dmg.sh below.
-drawGlassCard(NSRect(x: 126, y: 168, width: 388, height: 300), accent: .white)
-drawGlassCard(
-    NSRect(x: 766, y: 168, width: 388, height: 300),
-    accent: NSColor(calibratedRed: 0.25, green: 0.66, blue: 0.94, alpha: 1)
-)
 
 func drawText(
-    _ text: String,
+    _ value: String,
     in rect: NSRect,
     font: NSFont,
-    color: NSColor,
-    alignment: NSTextAlignment = .left
+    color textColor: NSColor,
+    alignment: NSTextAlignment = .center
 ) {
-    let style = NSMutableParagraphStyle()
-    style.alignment = alignment
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = alignment
+    paragraph.lineBreakMode = .byTruncatingTail
     NSAttributedString(
-        string: text,
+        string: value,
         attributes: [
             .font: font,
-            .foregroundColor: color,
-            .paragraphStyle: style
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraph
         ]
     ).draw(in: rect)
 }
 
-// The title stays separate from Finder's icon labels so the installation step
-// remains clear in any Finder language.
-drawText(
-    "ShotTessera for Mac",
-    in: NSRect(x: 104, y: 632, width: 1072, height: 24),
-    font: NSFont.systemFont(ofSize: 16, weight: .medium),
-    color: NSColor(calibratedRed: 0.20, green: 0.30, blue: 0.42, alpha: 0.70),
-    alignment: .center
+// A quiet, original surface keeps Finder's real app and Applications icons as
+// the visual focus. It follows the familiar drag-to-install hierarchy without
+// copying third-party artwork or typography.
+color(0.965, 0.973, 0.988).setFill()
+NSBezierPath(rect: canvasRect).fill()
+
+let topGlow = NSGradient(colors: [
+    color(0.77, 0.91, 1.00, 0.48),
+    color(0.91, 0.82, 1.00, 0.28),
+    color(1.00, 1.00, 1.00, 0)
+])!
+topGlow.draw(
+    fromCenter: NSPoint(x: 480, y: 505),
+    radius: 0,
+    toCenter: NSPoint(x: 480, y: 505),
+    radius: 430,
+    options: [.drawsAfterEndingLocation]
 )
-drawText(
-    "把影片织成一张分镜图",
-    in: NSRect(x: 104, y: 581, width: 1072, height: 42),
-    font: NSFont.systemFont(ofSize: 30, weight: .bold),
-    color: NSColor(calibratedRed: 0.10, green: 0.16, blue: 0.25, alpha: 0.94),
-    alignment: .center
+
+let floorGlow = NSGradient(colors: [
+    color(0.48, 0.86, 0.94, 0.12),
+    color(0.52, 0.46, 0.96, 0.06),
+    .clear
+])!
+floorGlow.draw(
+    fromCenter: NSPoint(x: 480, y: 265),
+    radius: 0,
+    toCenter: NSPoint(x: 480, y: 265),
+    radius: 370,
+    options: [.drawsAfterEndingLocation]
+)
+
+let accent = NSGradient(colors: [
+    color(0.30, 0.82, 0.88),
+    color(0.55, 0.47, 0.96)
+])!
+accent.draw(
+    in: NSBezierPath(roundedRect: NSRect(x: 410, y: 554, width: 140, height: 4), xRadius: 2, yRadius: 2),
+    angle: 0
 )
 
 drawText(
-    "将左侧应用拖入右侧“应用程序”即可安装",
-    in: NSRect(x: 104, y: 118, width: 1072, height: 24),
-    font: NSFont.systemFont(ofSize: 15, weight: .medium),
-    color: NSColor(calibratedRed: 0.18, green: 0.29, blue: 0.40, alpha: 0.70),
-    alignment: .center
+    "ShotTessera",
+    in: NSRect(x: 100, y: 506, width: 760, height: 42),
+    font: .systemFont(ofSize: 30, weight: .semibold),
+    color: color(0.10, 0.14, 0.22)
 )
 drawText(
-    "支持 Apple Silicon 与 Intel Mac · macOS 13 及以上版本",
-    in: NSRect(x: 104, y: 75, width: 1072, height: 20),
-    font: NSFont.systemFont(ofSize: 12, weight: .regular),
-    color: NSColor(calibratedRed: 0.25, green: 0.33, blue: 0.43, alpha: 0.50),
-    alignment: .center
+    "视频一键截屏拼图 · macOS",
+    in: NSRect(x: 100, y: 474, width: 760, height: 24),
+    font: .systemFont(ofSize: 15, weight: .medium),
+    color: color(0.31, 0.37, 0.48, 0.82)
 )
 
-let arrowPath = NSBezierPath()
-arrowPath.move(to: NSPoint(x: 588, y: 322))
-arrowPath.line(to: NSPoint(x: 642, y: 322))
-arrowPath.line(to: NSPoint(x: 626, y: 338))
-arrowPath.move(to: NSPoint(x: 642, y: 322))
-arrowPath.line(to: NSPoint(x: 626, y: 306))
-arrowPath.lineWidth = 8
-arrowPath.lineCapStyle = .round
-arrowPath.lineJoinStyle = .round
-NSColor(calibratedRed: 0.22, green: 0.58, blue: 0.86, alpha: 0.88).setStroke()
-arrowPath.stroke()
+// Finder places the two real icons at x=260 and x=700. The arrow is the only
+// instructional graphic in the center, so the installation gesture reads at a
+// glance even before the user reads the footer.
+let arrow = NSBezierPath()
+arrow.move(to: NSPoint(x: 443, y: 302))
+arrow.line(to: NSPoint(x: 517, y: 302))
+arrow.lineWidth = 4
+arrow.lineCapStyle = .round
+color(0.18, 0.22, 0.29, 0.90).setStroke()
+arrow.stroke()
+
+let arrowHead = NSBezierPath()
+arrowHead.move(to: NSPoint(x: 500, y: 319))
+arrowHead.line(to: NSPoint(x: 517, y: 302))
+arrowHead.line(to: NSPoint(x: 500, y: 285))
+arrowHead.lineWidth = 4
+arrowHead.lineCapStyle = .round
+arrowHead.lineJoinStyle = .round
+color(0.18, 0.22, 0.29, 0.90).setStroke()
+arrowHead.stroke()
+
+drawText(
+    "拖动左侧应用到右侧“应用程序”即可安装",
+    in: NSRect(x: 120, y: 119, width: 720, height: 24),
+    font: .systemFont(ofSize: 15, weight: .medium),
+    color: color(0.28, 0.33, 0.42, 0.86)
+)
+drawText(
+    "适用于 Apple Silicon 与 Intel Mac · 需要 macOS 13 或更高版本",
+    in: NSRect(x: 120, y: 85, width: 720, height: 20),
+    font: .systemFont(ofSize: 12, weight: .regular),
+    color: color(0.43, 0.47, 0.55, 0.68)
+)
 
 NSGraphicsContext.restoreGraphicsState()
+
 guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
     throw InstallerBackgroundError.unableToWrite(outputURL.path)
 }

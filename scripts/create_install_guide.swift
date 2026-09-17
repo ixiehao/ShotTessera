@@ -155,13 +155,12 @@ private func drawStep(
     let source: NSRect?
     switch index {
     case 1:
-        // A close crop makes the mounted app icon legible while keeping the
-        // window chrome visible, so this remains recognisably a real DMG view.
-        source = NSRect(x: 350, y: 250, width: 720, height: 600)
+        // Close crop of the real mounted app item from the clean, toolbar-free
+        // 1920 × 1200 DMG window supplied by the project owner.
+        source = NSRect(x: 220, y: 300, width: 660, height: 600)
     case 2:
-        // This wider crop keeps the actual app, arrow and Applications alias in
-        // one captured installer view.
-        source = NSRect(x: 260, y: 335, width: 2_080, height: 740)
+        // Keep the actual app, centered arrow and Applications alias together.
+        source = NSRect(x: 250, y: 270, width: 1_420, height: 560)
     default:
         source = nil
     }
