@@ -3,6 +3,23 @@
 All notable user-facing changes are recorded here. Stable releases remain
 available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/releases).
 
+## v0.2.7
+
+### 中文
+
+- 全面重构批处理工作台的三栏布局、间距、最小窗口尺寸与队列滚动体验。
+- 重绘全套原创矢量界面图标；提升浅色与深色模式下预览翻页按钮的辨识度。
+
+### English
+
+- Refined the Batch Studio’s three-column layout, spacing, minimum window size, and queue scrolling.
+- Redrew the original vector icon system and improved preview-navigation contrast in Light and Dark modes.
+
+### 日本語
+
+- バッチ作業画面の 3 カラム構成、余白、最小ウインドウサイズ、キューのスクロール体験を改善しました。
+- オリジナルのベクターアイコンを再設計し、ライト／ダーク表示でのプレビュー移動ボタンの視認性を高めました。
+
 ## v0.2.6
 
 ### 中文
