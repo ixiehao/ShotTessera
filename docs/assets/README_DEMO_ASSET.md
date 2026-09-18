@@ -68,6 +68,11 @@ cards deliberately use the approved, real ShotTessera screenshots in
 `install-screen-dmg.png` and `install-screen-launch.png`, rather than drawings
 of Finder, the Applications folder, or the app.
 
+To keep the English, Simplified Chinese, and Japanese README files visually
+identical, each README references the same two assets: the shared functional
+demo `video-to-storyboard-demo.gif` and `install-guide-en.jpg`. The localized
+guide variants remain available for release pages and other localized material.
+
 `install-screen-dmg.png` is the clean 1920 × 1200 window from the v0.2.7 DMG:
 it has no Finder sidebar or toolbar and shows the real aligned app, arrow, and
 Applications alias. `install-screen-launch.png` is a fresh 1880 × 1336 Retina
@@ -90,12 +95,3 @@ swift scripts/create_install_guide.swift \
 
 Replace `zh` with `en` or `ja` for the other localized guides. These original
 project assets are released under the [MIT License](../../LICENSE).
-
-## Japanese README product screenshot
-
-`batch-studio-v027-ja.png` is a clean 1880 × 1336 Retina capture of the v0.2.7
-Batch Studio empty state with the in-app language set to Japanese. It is the
-hero image used by `README.ja.md`, so Japanese readers see the current product
-interface rather than an earlier promotional illustration. The capture contains
-no user videos or third-party content and is released as an original project
-asset under the [MIT License](../../LICENSE).
