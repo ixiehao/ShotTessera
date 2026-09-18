@@ -1,6 +1,8 @@
 "alert.generation.title" = "Unable to Create Storyboard";
 "button.ok" = "OK";
 "app.tagline" = "Turn video into one storyboard";
+"app.productName" = "视频一键截屏拼图";
+"studio.title" = "Batch Studio";
 "app.language" = "Language";
 "app.icon.accessibility" = "ShotTessera Tessera Iris icon";
 "section.grid" = "Storyboard Grid";
@@ -78,6 +80,12 @@
 "queue.more" = "%d more videos waiting";
 "queue.clear" = "Clear queue";
 "queue.clear.hint" = "Remove all videos and the current preview";
+"queue.title" = "Video Queue";
+"queue.count" = "%d videos";
+"queue.addAction" = "Add";
+"queue.localTitle" = "Local, private processing";
+"inspector.title" = "Storyboard Settings";
+"batch.failureSummary" = "%d videos need attention";
 "video.add" = "Drop one or more videos";
 "video.added" = "%d videos added";
 "video.support" = "Supports MP4, MOV, MPEG, and more";

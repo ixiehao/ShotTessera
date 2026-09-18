@@ -68,13 +68,15 @@ cards deliberately use the approved, real ShotTessera screenshots in
 `install-screen-dmg.png` and `install-screen-launch.png`, rather than drawings
 of Finder, the Applications folder, or the app.
 
-`install-screen-dmg.png` is the clean 1920 × 1200 window from the current DMG:
+`install-screen-dmg.png` is the clean 1920 × 1200 window from the v0.2.7 DMG:
 it has no Finder sidebar or toolbar and shows the real aligned app, arrow, and
-Applications alias. `install-screen-launch.png` is a fresh 940 × 728 capture of
-the current build's empty state. The screenshots contain no user files,
-third-party apps, or third-party media. They are provided by the project owner
-for this documentation and are released with the other original project assets
-under the [MIT License](../../LICENSE).
+Applications alias. `install-screen-launch.png` is a fresh 1880 × 1336 Retina
+capture of the v0.2.7 empty Batch Studio state. The guide renderer fits every
+real screenshot proportionally and centres it in its visual well; no interface
+elements are cropped or synthetically recreated. The screenshots contain no
+user files, third-party apps, or third-party media. They are provided by the
+project owner for this documentation and are released with the other original
+project assets under the [MIT License](../../LICENSE).
 
 To regenerate a guide on macOS:
 

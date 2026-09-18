@@ -1,6 +1,8 @@
 "alert.generation.title" = "絵コンテを作成できません";
 "button.ok" = "OK";
 "app.tagline" = "動画を一枚の絵コンテに";
+"app.productName" = "视频一键截屏拼图";
+"studio.title" = "バッチスタジオ";
 "app.language" = "言語";
 "app.icon.accessibility" = "ShotTessera のアイコン";
 "section.grid" = "絵コンテのグリッド";
@@ -78,6 +80,12 @@
 "queue.more" = "さらに %d 本が待機中";
 "queue.clear" = "キューを消去";
 "queue.clear.hint" = "すべての動画と現在のプレビューを消去します";
+"queue.title" = "動画キュー";
+"queue.count" = "%d 本の動画";
+"queue.addAction" = "動画を追加";
+"queue.localTitle" = "ローカル処理・プライバシー重視";
+"inspector.title" = "絵コンテ設定";
+"batch.failureSummary" = "%d 本の動画に対応が必要です";
 "video.add" = "動画を一つ以上ドロップ";
 "video.added" = "%d 本の動画を追加";
 "video.support" = "MP4、MOV、MPEG などに対応";

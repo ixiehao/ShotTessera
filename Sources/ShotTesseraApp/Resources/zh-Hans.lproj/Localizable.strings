@@ -1,6 +1,8 @@
 "alert.generation.title" = "无法生成分镜图";
 "button.ok" = "好";
 "app.tagline" = "把影片织成一张分镜图";
+"app.productName" = "视频一键截屏拼图";
+"studio.title" = "批处理工作台";
 "app.language" = "语言";
 "app.icon.accessibility" = "ShotTessera 拼片之眼图标";
 "section.grid" = "分镜网格";
@@ -78,6 +80,12 @@
 "queue.more" = "另有 %d 部影片等待处理";
 "queue.clear" = "清空队列";
 "queue.clear.hint" = "移除当前所有影片与预览结果";
+"queue.title" = "视频队列";
+"queue.count" = "%d 部影片";
+"queue.addAction" = "添加影片";
+"queue.localTitle" = "本地处理，保护隐私";
+"inspector.title" = "分镜设置";
+"batch.failureSummary" = "%d 部影片需要处理";
 "video.add" = "拖入一个或多个视频";
 "video.added" = "已添加 %d 部影片";
 "video.support" = "支持 MP4、MOV、MPEG 等";

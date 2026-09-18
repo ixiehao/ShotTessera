@@ -316,7 +316,11 @@ struct ShotTesseraApp: App {
         Window("ShotTessera", id: "main") {
             ContentView(model: storyboardModel)
                 .environmentObject(updateChecker)
-                .frame(minWidth: 940, minHeight: 700)
+                .frame(minWidth: 940, minHeight: 640)
+                // The hidden title bar is part of the composition: the toolbar
+                // can use it because its leading content already clears the
+                // traffic lights. Do not retain an empty safe-area strip.
+                .ignoresSafeArea(.container, edges: .top)
                 .background(MainWindowLifecycleBridge(appDelegate: appDelegate))
         }
         .windowStyle(.hiddenTitleBar)

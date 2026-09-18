@@ -23,7 +23,7 @@ private struct Copy {
         switch language {
         case .english:
             return Copy(
-                kicker: "SHOT TESSERA · BEGINNER INSTALL GUIDE",
+                kicker: "SHOT TESSERA（视频一键截屏拼图） · BEGINNER INSTALL GUIDE",
                 title: "Install safely in three steps",
                 subtitle: "No Terminal. Do not disable macOS security.",
                 steps: [
@@ -37,7 +37,7 @@ private struct Copy {
             )
         case .chinese:
             return Copy(
-                kicker: "SHOT TESSERA · 新手安装指引",
+                kicker: "视频一键截屏拼图（ShotTessera）· 新手安装指引",
                 title: "安全安装，只需三步",
                 subtitle: "不需要终端，也不需要关闭 macOS 系统安全设置。",
                 steps: [
@@ -51,7 +51,7 @@ private struct Copy {
             )
         case .japanese:
             return Copy(
-                kicker: "SHOT TESSERA · はじめてのインストール",
+                kicker: "動画ワンクリック・スクリーンショットモンタージュ（ShotTessera）· はじめてのインストール",
                 title: "安全なインストールは 3 ステップ",
                 subtitle: "ターミナルも macOS の安全設定変更も不要です。",
                 steps: [
@@ -114,18 +114,22 @@ private func text(
 private func drawScreenshot(_ image: NSImage, in rect: NSRect, source: NSRect? = nil) {
     let available = source ?? NSRect(origin: .zero, size: image.size)
     guard available.width > 0, available.height > 0 else { return }
-    let scale = max(rect.width / available.width, rect.height / available.height)
-    let sourceSize = NSSize(width: rect.width / scale, height: rect.height / scale)
-    let crop = NSRect(
-        x: available.midX - sourceSize.width / 2,
-        y: available.midY - sourceSize.height / 2,
-        width: sourceSize.width,
-        height: sourceSize.height
-    ).intersection(available)
+    // Keep the real Finder/app capture intact.  A cover crop made the app
+    // window drift to one side in the first-generation guide.  Fit it inside
+    // the visual well instead, then centre the result on both axes.
+    let scale = min(rect.width / available.width, rect.height / available.height)
+    let fittedSize = NSSize(width: available.width * scale, height: available.height * scale)
+    let fitted = NSRect(
+        x: rect.midX - fittedSize.width / 2,
+        y: rect.midY - fittedSize.height / 2,
+        width: fittedSize.width,
+        height: fittedSize.height
+    )
 
     NSGraphicsContext.saveGraphicsState()
     rounded(rect, radius: 14).addClip()
-    image.draw(in: rect, from: crop, operation: .sourceOver, fraction: 1)
+    fill(rect, color(0.92, 0.96, 1, 0.96), radius: 14)
+    image.draw(in: fitted, from: available, operation: .sourceOver, fraction: 1)
     NSGraphicsContext.restoreGraphicsState()
     stroke(rect, color(0.71, 0.91, 1, 0.46), width: 1.3, radius: 14)
 }
@@ -155,11 +159,10 @@ private func drawStep(
     let source: NSRect?
     switch index {
     case 1:
-        // Close crop of the real mounted app item from the clean, toolbar-free
-        // 1920 × 1200 DMG window supplied by the project owner.
-        source = NSRect(x: 220, y: 300, width: 660, height: 600)
+        // A centered close view of the real v0.2.7 mounted-app item.
+        source = NSRect(x: 220, y: 310, width: 660, height: 520)
     case 2:
-        // Keep the actual app, centered arrow and Applications alias together.
+        // Keep the actual app, centered arrow, and Applications alias together.
         source = NSRect(x: 250, y: 270, width: 1_420, height: 560)
     default:
         source = nil

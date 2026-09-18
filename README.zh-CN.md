@@ -1,16 +1,16 @@
-# ShotTessera
+# 视频一键截屏拼图（ShotTessera）
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 ![自摄船行湖面视频经 ShotTessera 智能选帧生成九宫格分镜图](docs/assets/video-to-storyboard-demo.gif)
 
-ShotTessera 是一款原生 macOS 分镜图工具：从视频中挑选有代表性的画面，拼成一张干净的分镜图。`tessera` 意为马赛克的小拼片，正对应本项目把镜头组织为整体的方式。
+**视频一键截屏拼图（ShotTessera）** 是一款原生 macOS 分镜图工具：从视频中挑选有代表性的画面，拼成一张干净的分镜图。`tessera` 意为马赛克的小拼片，正对应本项目把镜头组织为整体的方式。
 
 **先智能选帧，再手动微调；全程本地完成。**
 
-项目名称为 **视频一键截屏拼图**，适合搜索“视频截图拼图”“视频一键截图”“分镜图生成器”“视频九宫格截图”“视频联系表”等关键词。
+中文名为 **视频一键截屏拼图**；适合搜索“视频截图拼图”“视频一键截图”“分镜图生成器”“视频九宫格截图”“视频联系表”等关键词。
 
-> **最新版：**[v0.2.6 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.6) · macOS 13+ · Apple Silicon 与 Intel Mac
+> **最新版：**[v0.2.7 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.7) · macOS 13+ · Apple Silicon 与 Intel Mac
 
 ## 一张图看懂功能
 
@@ -59,6 +59,7 @@ brew install --cask ixiehao/tap/shottessera
 - 源码、下载与版本说明：[github.com/ixiehao/ShotTessera](https://github.com/ixiehao/ShotTessera)
 - 反馈问题或提出建议：[创建 GitHub Issue](https://github.com/ixiehao/ShotTessera/issues/new/choose)
 - 更新记录：[CHANGELOG.md](CHANGELOG.md) · 隐私承诺：[PRIVACY.md](PRIVACY.md)
+- 命名规范：[docs/NAMING.md](docs/NAMING.md)
 
 ## 权利与归属
 

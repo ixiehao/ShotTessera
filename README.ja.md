@@ -1,16 +1,16 @@
-# ShotTessera
+# 動画ワンクリック・スクリーンショットモンタージュ（ShotTessera）
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 ![プロジェクト所有者が撮影した湖上映像から ShotTessera が九分割の絵コンテを生成するアニメーション](docs/assets/video-to-storyboard-demo.gif)
 
-ShotTessera は、動画から代表的なフレームを選び、一枚の見やすい絵コンテ画像にまとめるネイティブ macOS アプリです。`tessera` はモザイクを構成する小片を意味します。
+**動画ワンクリック・スクリーンショットモンタージュ（ShotTessera）** は、動画から代表的なフレームを選び、一枚の見やすい絵コンテ画像にまとめるネイティブ macOS アプリです。`tessera` はモザイクを構成する小片を意味します。
 
 **まずスマート選択、必要なコマだけ手動調整。すべてローカルで完結します。**
 
-別名は **视频一键截屏拼图** です。動画スクリーンショット、動画コンタクトシート、絵コンテ作成、動画フレーム抽出のための macOS ツールとして検索できます。
+日本語名は **動画ワンクリック・スクリーンショットモンタージュ** です。動画スクリーンショット、動画コンタクトシート、絵コンテ作成、動画フレーム抽出のための macOS ツールとして検索できます。
 
-> **最新リリース：**[v0.2.6 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.6) · macOS 13 以降 · Apple Silicon / Intel Mac
+> **最新リリース：**[v0.2.7 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.7) · macOS 13 以降 · Apple Silicon / Intel Mac
 
 ## 一枚で分かる仕組み
 
@@ -59,6 +59,7 @@ brew install --cask ixiehao/tap/shottessera
 - ソース、ダウンロード、リリースノート：[github.com/ixiehao/ShotTessera](https://github.com/ixiehao/ShotTessera)
 - 不具合報告・提案：[GitHub Issue を作成](https://github.com/ixiehao/ShotTessera/issues/new/choose)
 - 更新履歴：[CHANGELOG.md](CHANGELOG.md) · プライバシー：[PRIVACY.md](PRIVACY.md)
+- 命名規約：[docs/NAMING.md](docs/NAMING.md)
 
 ## 権利と帰属
 

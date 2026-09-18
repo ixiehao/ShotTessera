@@ -2,6 +2,16 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Shared, whole-point measurements for the three-column studio.
+/// Keeping structural values here prevents subtle baseline drift between panels.
+private enum StudioLayout {
+    static let panelInset: CGFloat = 16
+    static let panelTitleTop: CGFloat = 16
+    static let titleSubtitleGap: CGFloat = 4
+    static let panelHeaderHeight: CGFloat = 76
+    static let toolbarHorizontalInset: CGFloat = 20
+}
+
 private struct ManualFrameEditorRequest: Identifiable {
     let id = UUID()
     let previewID: RenderedStoryboardPreview.ID
@@ -48,26 +58,43 @@ struct ContentView: View {
 
     private var isLightAppearance: Bool { resolvedAppearance == .light }
 
-    private var panelFill: AnyShapeStyle {
+    // Batch Studio uses surfaces and spacing rather than nested glass cards.
+    // This keeps a 940 pt window readable while giving the storyboard itself
+    // the strongest visual weight.
+    private var appBackground: Color {
         isLightAppearance
-            ? AnyShapeStyle(Color.white.opacity(0.78))
-            : AnyShapeStyle(.ultraThinMaterial)
+            ? Color(red: 0.925, green: 0.961, blue: 0.976)
+            : Color(red: 0.035, green: 0.061, blue: 0.102)
     }
 
-    private var panelBorder: Color {
+    private var sidebarFill: Color {
         isLightAppearance
-            ? Color(red: 0.57, green: 0.65, blue: 0.80).opacity(0.52)
-            : .white.opacity(0.11)
+            ? Color(red: 0.930, green: 0.965, blue: 0.976)
+            : Color(red: 0.055, green: 0.098, blue: 0.145)
     }
 
-    private var appBackground: LinearGradient {
-        let colors: [Color] = switch resolvedAppearance {
-        case .light:
-            [Color(red: 0.93, green: 0.95, blue: 0.99), Color(red: 0.86, green: 0.89, blue: 0.97)]
-        case .dark, .system:
-            [Color(red: 0.05, green: 0.06, blue: 0.10), Color(red: 0.10, green: 0.075, blue: 0.16)]
-        }
-        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+    private var stageFill: Color {
+        isLightAppearance
+            ? Color(red: 0.990, green: 0.996, blue: 0.998)
+            : Color(red: 0.025, green: 0.043, blue: 0.070)
+    }
+
+    private var workspaceDivider: Color {
+        isLightAppearance
+            ? Color(red: 0.80, green: 0.875, blue: 0.905)
+            : Color(red: 0.16, green: 0.24, blue: 0.33)
+    }
+
+    private var studioAccent: Color {
+        isLightAppearance
+            ? Color(red: 0.04, green: 0.53, blue: 0.62)
+            : Color(red: 0.38, green: 0.85, blue: 0.89)
+    }
+
+    private var inlineControlFill: Color {
+        isLightAppearance
+            ? Color.white.opacity(0.82)
+            : Color(red: 0.10, green: 0.15, blue: 0.21)
     }
 
     private func t(_ key: String, _ arguments: CVarArg...) -> String {
@@ -75,36 +102,61 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            appBackground.ignoresSafeArea()
+        GeometryReader { geometry in
+            let isCompactHeight = geometry.size.height < 700
+            let isNarrow = geometry.size.width < 1_090
+            let queueWidth: CGFloat = isNarrow ? 250 : 266
+            let inspectorWidth: CGFloat = isNarrow ? 250 : 270
 
-            GeometryReader { geometry in
-                let isCompactHeight = geometry.size.height < 820
+            VStack(spacing: 0) {
+                studioToolbar(queueWidth: queueWidth)
+                    // The brand block is already offset for the traffic lights;
+                    // keep the toolbar in the native title-bar rhythm instead
+                    // of reserving a second, empty title-bar-height strip.
+                    .padding(.top, 8)
+                    .padding(.horizontal, StudioLayout.toolbarHorizontalInset)
+                    .padding(.bottom, 10)
 
-                HStack(alignment: .top, spacing: 28) {
-                    controlPanel(compact: isCompactHeight)
-                        .frame(width: 332)
+                if updateChecker.hasUpdate {
+                    UpdateAvailableBanner(checker: updateChecker, language: language)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 10)
+                }
+
+                Rectangle()
+                    .fill(workspaceDivider)
+                    .frame(height: 1)
+
+                HStack(spacing: 0) {
+                    queuePanel(compact: isCompactHeight, isNarrow: isNarrow)
+                        .frame(width: queueWidth)
                         .frame(maxHeight: .infinity)
+
+                    Rectangle()
+                        .fill(workspaceDivider)
+                        .frame(width: 1)
+
                     previewPanel
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    Rectangle()
+                        .fill(workspaceDivider)
+                        .frame(width: 1)
+
+                    controlPanel(compact: isCompactHeight, isNarrow: isNarrow)
+                        .frame(width: inspectorWidth)
+                        .frame(maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .padding(.horizontal, 30)
-                .padding(.bottom, 20)
-                .padding(.top, updateChecker.hasUpdate ? 98 : 62)
-            }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            headerControls
-                // Hidden-title-bar windows draw below the traffic lights. Keep this
-                // toolbar in that safe strip without consuming card height.
-                .padding(.top, 40)
-                .padding(.trailing, 22)
-
-            if updateChecker.hasUpdate {
-                UpdateAvailableBanner(checker: updateChecker, language: language)
-                    .padding(.top, 64)
-                    .frame(maxWidth: .infinity)
+                if model.isProcessing || model.hasFailedJobs {
+                    Rectangle()
+                        .fill(workspaceDivider)
+                        .frame(height: 1)
+                    batchStatusBar
+                }
             }
+            .background(appBackground)
         }
         .environment(\.locale, language.locale)
         .preferredColorScheme(appearance.preferredColorScheme)
@@ -185,17 +237,52 @@ struct ContentView: View {
         isTranscodingGuidePresented = true
     }
 
-    private var headerControls: some View {
-        HStack(spacing: 8) {
-            appearanceMenu
-            languageMenu
+    private func studioToolbar(queueWidth: CGFloat) -> some View {
+        // This surface uses the exact same x-coordinate as the first column
+        // divider below. It must not depend on the natural width of the brand.
+        let queueBoundary = queueWidth - StudioLayout.toolbarHorizontalInset
+
+        return ZStack(alignment: .leading) {
+            HStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    ShotTesseraMark(language: language, size: 26)
+                    Text("ShotTessera")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                }
+                // The left inset leaves macOS traffic lights unobstructed in the
+                // hidden-title-bar window. The frame ends at the column boundary.
+                .padding(.leading, 88)
+                .frame(width: queueBoundary, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(t("app.productName"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text(t("app.tagline"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .lineLimit(1)
+                .padding(.leading, 10)
+            }
+
+            HStack(spacing: 8) {
+                appearanceMenu
+                languageMenu
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+
+            Rectangle()
+                .fill(workspaceDivider)
+                .frame(width: 1, height: 26)
+                .offset(x: queueBoundary)
         }
     }
 
     private func headerControlLabel(symbol: ProjectIcon.Symbol, title: String) -> some View {
-        HStack(spacing: 7) {
-            ProjectIcon(symbol: symbol, size: symbol == .moon ? 18 : 15)
-                .foregroundStyle(Color(red: 0.26, green: 0.68, blue: 0.84))
+        HStack(spacing: 8) {
+            ProjectIcon(symbol: symbol, size: 18)
+                .foregroundStyle(studioAccent)
             Text(title)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -203,11 +290,10 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .font(.system(size: 12, weight: .semibold))
-        .frame(width: 124, height: 34)
+        .frame(width: 108, height: 28)
         .contentShape(Capsule())
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay { Capsule().strokeBorder(Color.accentColor.opacity(0.48)) }
-        .shadow(color: .black.opacity(0.12), radius: 7, y: 3)
+        .background(sidebarFill, in: Capsule())
+        .overlay { Capsule().strokeBorder(workspaceDivider) }
     }
 
     private var appearanceMenu: some View {
@@ -217,7 +303,7 @@ struct ContentView: View {
             headerControlLabel(symbol: appearanceSymbol, title: appearance.displayName(in: language))
         }
         .buttonStyle(.plain)
-        .frame(width: 124, height: 34)
+        .frame(width: 108, height: 28)
         .accessibilityLabel(t("app.appearance"))
         // Open beneath the top toolbar. An upward popover is clipped whenever
         // the window sits against the top edge of the display.
@@ -269,7 +355,7 @@ struct ContentView: View {
             headerControlLabel(symbol: .language, title: language.displayName)
         }
         .buttonStyle(.plain)
-        .frame(width: 124, height: 34)
+        .frame(width: 108, height: 28)
         .accessibilityLabel(t("app.language"))
         .popover(isPresented: $isLanguagePickerPresented, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
@@ -312,24 +398,30 @@ struct ContentView: View {
         Button {
             isAspectPickerPresented.toggle()
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
                 Text(t("section.aspect"))
                     .font(.system(size: 11, weight: .medium))
                 Spacer(minLength: 0)
-                Text(model.layoutAspect.label(in: language))
-                    .font(.system(size: 11, weight: .medium))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .allowsTightening(true)
-                ProjectIcon(symbol: .selector, size: 11)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Spacer(minLength: 0)
+                    Text(model.layoutAspect.label(in: language))
+                        .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .allowsTightening(true)
+                    ProjectIcon(symbol: .selector, size: 11)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 9)
+                .frame(width: 154, height: 30)
+                .background(inlineControlFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(workspaceDivider.opacity(0.7)) }
             }
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .compactOptionSurface()
         .accessibilityLabel(t("section.aspect"))
         // A pause is an intentional checkpoint between jobs. Keep this
         // setting editable there, so the user can adjust the next job before
@@ -376,25 +468,31 @@ struct ContentView: View {
         Button {
             isWidthPickerPresented.toggle()
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
                 Text(t("export.width"))
                     .font(.system(size: 11, weight: .medium))
                 Spacer(minLength: 0)
-                Text(t("export.width.value", model.width))
-                    .font(.system(size: 11, weight: .medium))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .allowsTightening(true)
-                ProjectIcon(symbol: .selector, size: 11)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Spacer(minLength: 0)
+                    Text(t("export.width.value", model.width))
+                        .font(.system(size: 11, weight: .medium))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .allowsTightening(true)
+                    ProjectIcon(symbol: .selector, size: 11)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 9)
+                .frame(width: 154, height: 30)
+                .background(inlineControlFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(workspaceDivider.opacity(0.7)) }
             }
             .foregroundStyle(.primary)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .compactOptionSurface()
         .accessibilityLabel(t("export.width"))
         // Match the rest of the export controls: settings unlock only after
         // the batch reaches its pause checkpoint, never mid-render.
@@ -439,152 +537,141 @@ struct ContentView: View {
 
     private var outputWidthChoices: [Int] { [1920, 2560, 3840, 5120, 7680, 12_000] }
 
-    private func controlPanel(compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: compact ? 10 : 18) {
-            HStack(spacing: 12) {
-                ShotTesseraMark(language: language)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ShotTessera")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    Text(t("app.tagline"))
-                        .font(.system(size: 12, weight: .medium))
+    private func queuePanel(compact: Bool, isNarrow: Bool) -> some View {
+        VStack(alignment: .leading, spacing: compact ? 10 : 12) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: StudioLayout.titleSubtitleGap) {
+                    Text(t("queue.title"))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    Text(t("queue.count", model.videoJobs.count))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
+                Spacer(minLength: 4)
+                Button(action: model.chooseVideo) {
+                    HStack(spacing: 6) {
+                        ProjectIcon(symbol: .plus, size: 14)
+                        Text(t("queue.addAction"))
+                    }
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(isLightAppearance ? Color.white : Color(red: 0.02, green: 0.06, blue: 0.08))
+                    .padding(.horizontal, 11)
+                    .frame(height: 32)
+                    .background(studioAccent, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(model.isQueueLocked)
             }
 
-            VideoBatchCard(jobs: model.videoJobs, language: language, isTargeted: model.isDropTargeted, isLocked: model.isQueueLocked, isLightAppearance: isLightAppearance, isCompact: compact) {
-                model.chooseVideo()
-            } clear: {
-                model.clearVideos()
-            }
+            VideoBatchCard(
+                jobs: model.videoJobs,
+                language: language,
+                isTargeted: model.isDropTargeted,
+                isLocked: model.isQueueLocked,
+                isLightAppearance: isLightAppearance,
+                isCompact: compact || isNarrow,
+                choose: model.chooseVideo,
+                clear: model.clearVideos
+            )
+            .frame(maxHeight: .infinity, alignment: .top)
 
-            VStack(alignment: .leading, spacing: compact ? 8 : 12) {
-                GlyphLabel(title: t("section.grid"), glyph: .grid)
-                    .font(.system(size: 13, weight: .semibold))
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: compact ? 8 : 10)], spacing: compact ? 8 : 10) {
-                    ForEach(StoryboardGrid.availableSides, id: \.self) { side in
-                        Button {
-                            model.gridSide = side
-                        } label: {
-                            Text("\(side) × \(side)")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, compact ? 6 : 8)
+            VStack(alignment: .leading, spacing: 5) {
+                GlyphLabel(title: t("queue.localTitle"), glyph: .privacy, glyphSize: 17)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 8)
+        }
+        .padding(.horizontal, StudioLayout.panelInset)
+        .padding(.vertical, compact ? 12 : StudioLayout.panelTitleTop)
+        .background(sidebarFill)
+    }
+
+    private func controlPanel(compact: Bool, isNarrow _: Bool) -> some View {
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(t("inspector.title"))
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .padding(.horizontal, StudioLayout.panelInset)
+                .padding(.top, compact ? 12 : StudioLayout.panelTitleTop)
+                .padding(.bottom, compact ? 8 : 12)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    inspectorSection(title: t("section.grid"), glyph: .grid, compact: compact) {
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
+                            spacing: 8
+                        ) {
+                            ForEach(StoryboardGrid.availableSides, id: \.self) { side in
+                                Button {
+                                    model.gridSide = side
+                                } label: {
+                                    Text("\(side) × \(side)")
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 7)
+                                }
+                                .buttonStyle(GridChoiceStyle(isSelected: model.gridSide == side))
+                                .disabled(model.isSettingsLocked)
+                            }
                         }
-                        .buttonStyle(GridChoiceStyle(isSelected: model.gridSide == side))
-                        .disabled(model.isSettingsLocked)
+                    }
+
+                    inspectorSection(title: t("section.frame"), glyph: .frame, compact: compact) {
+                        VStack(spacing: 8) {
+                            aspectSelector
+                            widthSelector
+                            inlineToggle(t("export.time"), isOn: $model.showTimestamps)
+                            inlineToggle(t("export.title"), isOn: $model.showTitleWatermark)
+                        }
+                    }
+
+                    inspectorSection(title: t("section.export"), glyph: .export, compact: compact, showsDivider: false) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(t("export.autosave"))
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            HStack(spacing: 8) {
+                                ForEach(ExportFormat.allCases) { format in
+                                    Button {
+                                        model.format = format
+                                    } label: {
+                                        Text(format.rawValue)
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, compact ? 6 : 8)
+                                    }
+                                    .buttonStyle(GridChoiceStyle(isSelected: model.format == format))
+                                    .disabled(model.isSettingsLocked)
+                                }
+                            }
+                        }
                     }
                 }
+                .padding(.horizontal, StudioLayout.panelInset)
+                .padding(.bottom, 12)
             }
 
-            VStack(alignment: .leading, spacing: compact ? 6 : 9) {
-                HStack {
-                    GlyphLabel(title: t("section.frame"), glyph: .layers)
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: compact ? 8 : 10), GridItem(.flexible())],
-                    spacing: compact ? 8 : 10
-                ) {
-                    aspectSelector
-                    widthSelector
-
-                    Toggle(t("export.time"), isOn: $model.showTimestamps)
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .allowsTightening(true)
-                        .toggleStyle(.switch)
-                        .tint(SelectionPalette.active)
-                        .compactOptionSurface()
-                        .disabled(model.isSettingsLocked)
-
-                    Toggle(t("export.title"), isOn: $model.showTitleWatermark)
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .allowsTightening(true)
-                        .toggleStyle(.switch)
-                        .tint(SelectionPalette.active)
-                        .compactOptionSurface()
-                        .disabled(model.isSettingsLocked)
-                }
-                .frame(maxWidth: .infinity)
-            }
-
-            VStack(alignment: .leading, spacing: compact ? 7 : 12) {
-                HStack(spacing: 7) {
-                    GlyphLabel(title: t("section.export"), glyph: .export)
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(t("export.autosave"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                HStack(spacing: 8) {
-                    ForEach(ExportFormat.allCases) { format in
-                        Button {
-                            model.format = format
-                        } label: {
-                            Text(format.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, compact ? 6 : 8)
-                        }
-                        .buttonStyle(GridChoiceStyle(isSelected: model.format == format))
-                        .disabled(model.isSettingsLocked)
-                    }
-                }
-            }
+            Rectangle()
+                .fill(workspaceDivider)
+                .frame(height: 1)
 
             VStack(spacing: 8) {
-                Button(action: model.generate) {
-                    HStack(spacing: 9) {
-                        if model.isProcessing { ProgressView().controlSize(.small) }
-                        ProjectIcon(symbol: .wand, size: 17)
-                        Text(model.isProcessing ? model.processingLabel : model.primaryButtonTitle)
-                    }
+                if !model.isProcessing {
+                    Button(action: model.generate) {
+                        Text(model.primaryButtonTitle)
                     .font(.system(size: 15, weight: .bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, compact ? 12 : 14)
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!model.hasVideos || model.isBusy)
-                .accessibilityLabel(model.isProcessing ? t("accessibility.generating") : t("accessibility.generate"))
-
-                if model.isProcessing {
-                    HStack(spacing: 8) {
-                    Button {
-                        if model.isPaused {
-                            isResumeConfirmationPresented = true
-                        } else if !model.isPauseRequested {
-                            isPauseConfirmationPresented = true
-                        }
-                    } label: {
-                        GlyphLabel(
-                            title: model.isPaused ? t("button.resumeGeneration") : (model.isPauseRequested ? t("button.pausePending") : t("button.pauseGeneration")),
-                            glyph: model.isPaused ? .play : .pause,
-                            glyphSize: 13
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(ProcessingControlButtonStyle(tone: .primary))
-                    .disabled(model.isPauseRequested && !model.isPaused)
-
-                    Button {
-                        isCancelConfirmationPresented = true
-                    } label: {
-                        GlyphLabel(title: t("button.cancelGeneration"), glyph: .trash, glyphSize: 13)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                    }
-                    .buttonStyle(ProcessingControlButtonStyle(tone: .destructive))
-                    }
-                    ProgressView(value: model.progress)
-                        .tint(Color(red: 0.38, green: 0.82, blue: 0.92))
-                        .accessibilityLabel(t("accessibility.analyzing"))
-                        .accessibilityValue("\(Int(model.progress * 100))%")
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(!model.hasVideos || model.isBusy)
+                    .accessibilityLabel(t("accessibility.generate"))
+                } else {
+                    Label(model.processingLabel, systemImage: "circle.dotted")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 if model.hasFailedJobs && !model.isProcessing {
@@ -611,14 +698,49 @@ struct ContentView: View {
                     }
                 }
             }
+            .padding(.horizontal, StudioLayout.panelInset)
+            .padding(.vertical, compact ? 12 : 16)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(compact ? 18 : 30)
-        .background(panelFill, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(panelBorder)
+        .background(sidebarFill)
+    }
+
+    private func inspectorSection<SectionContent: View>(
+        title: String,
+        glyph: ProjectIcon.Symbol,
+        compact: Bool,
+        showsDivider: Bool = true,
+        @ViewBuilder content: () -> SectionContent
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GlyphLabel(title: title, glyph: glyph, glyphSize: 15)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.primary)
+            content()
         }
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) {
+            if showsDivider {
+                Rectangle()
+                    .fill(workspaceDivider.opacity(0.72))
+                    .frame(height: 1)
+            }
+        }
+    }
+
+    private func inlineToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(SelectionPalette.active)
+                .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, minHeight: 30)
+        .disabled(model.isSettingsLocked)
     }
 
     private func previewNavigationButton(
@@ -629,30 +751,123 @@ struct ContentView: View {
     ) -> some View {
         Button(action: action) {
             ProjectIcon(symbol: symbol, size: 20)
-                .frame(width: 42, height: 42)
-                .contentShape(Circle())
+                .frame(width: 36, height: 44)
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(enabled ? Color(red: 0.43, green: 0.85, blue: 0.93) : PreviewText.secondary.opacity(0.32))
-        .background(Color.white.opacity(enabled ? 0.08 : 0.035), in: Circle())
-        .overlay { Circle().strokeBorder(.white.opacity(enabled ? 0.13 : 0.05)) }
+        .foregroundStyle(navigationForeground(enabled: enabled))
+        .background(
+            isLightAppearance
+                ? Color.white.opacity(enabled ? 0.98 : 0.76)
+                : Color(red: 0.094, green: 0.157, blue: 0.224).opacity(enabled ? 0.98 : 0.72),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(
+                isLightAppearance
+                    ? Color(red: 0.71, green: 0.81, blue: 0.85).opacity(enabled ? 1 : 0.62)
+                    : Color(red: 0.29, green: 0.38, blue: 0.46).opacity(enabled ? 1 : 0.6)
+            )
+        }
+        .shadow(color: isLightAppearance && enabled ? Color.black.opacity(0.10) : .clear, radius: 4, y: 2)
         .disabled(!enabled)
         .accessibilityLabel(label)
     }
 
+    private func navigationForeground(enabled: Bool) -> Color {
+        guard enabled else {
+            return isLightAppearance
+                ? Color(red: 0.47, green: 0.55, blue: 0.59)
+                : Color(red: 0.43, green: 0.51, blue: 0.58)
+        }
+        return isLightAppearance
+            ? Color(red: 0.14, green: 0.35, blue: 0.42)
+            : Color(red: 0.95, green: 0.98, blue: 1.0)
+    }
+
+    private var batchStatusBar: some View {
+        HStack(spacing: 12) {
+            if model.isProcessing {
+                ProgressView(value: model.progress)
+                    .tint(studioAccent)
+                    .frame(width: 150)
+                    .accessibilityLabel(t("accessibility.analyzing"))
+                    .accessibilityValue("\(Int(model.progress * 100))%")
+                Text(model.previewStatus)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Button {
+                    if model.isPaused {
+                        isResumeConfirmationPresented = true
+                    } else if !model.isPauseRequested {
+                        isPauseConfirmationPresented = true
+                    }
+                } label: {
+                    GlyphLabel(
+                        title: model.isPaused ? t("button.resumeGeneration") : (model.isPauseRequested ? t("button.pausePending") : t("button.pauseGeneration")),
+                        glyph: model.isPaused ? .play : .pause,
+                        glyphSize: 13
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                }
+                .buttonStyle(ProcessingControlButtonStyle(tone: .primary))
+                .disabled(model.isPauseRequested && !model.isPaused)
+
+                Button {
+                    isCancelConfirmationPresented = true
+                } label: {
+                    GlyphLabel(title: t("button.cancelGeneration"), glyph: .trash, glyphSize: 13)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                }
+                .buttonStyle(ProcessingControlButtonStyle(tone: .destructive))
+            } else {
+                GlyphLabel(title: t("batch.failureSummary", model.failedJobCount), glyph: .eye, glyphSize: 14)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    isFailureReportPresented = true
+                } label: {
+                    GlyphLabel(title: t("button.failureDetails"), glyph: .eye, glyphSize: 13)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                }
+                .buttonStyle(ProcessingControlButtonStyle(tone: .secondary))
+            }
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 54)
+        .background(sidebarFill)
+    }
+
     private var previewPanel: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: StudioLayout.titleSubtitleGap) {
                     Text(t("preview.title"))
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(PreviewText.primary)
                     Text(model.previewStatus)
-                        .font(.system(size: 13))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(PreviewText.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .help(model.previewStatus)
                 }
                 Spacer()
             }
+            .padding(.horizontal, StudioLayout.panelInset)
+            .padding(.top, StudioLayout.panelTitleTop)
+            .padding(.bottom, 10)
+            .frame(height: StudioLayout.panelHeaderHeight, alignment: .topLeading)
+
+            Rectangle()
+                .fill(workspaceDivider)
+                .frame(height: 1)
 
             Group {
                 if model.isProcessing {
@@ -665,30 +880,31 @@ struct ContentView: View {
                     )
                 } else if let image = model.previewImage {
                     VStack(spacing: 14) {
-                        HStack(spacing: 14) {
-                            if model.canBrowseCompletedPreviews {
-                                previewNavigationButton(
-                                    symbol: .previous,
-                                    label: t("button.previousResult"),
-                                    enabled: model.canShowPreviousPreview && !model.isApplyingFrameAdjustments,
-                                    action: model.showPreviousPreview
-                                )
-                            }
-
+                        ZStack {
                             Image(nsImage: image)
                                 .resizable()
                                 .scaledToFit()
-                                .frame(maxWidth: 660, maxHeight: 470)
+                                .frame(maxWidth: .infinity, maxHeight: 560)
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                                 .shadow(color: .black.opacity(0.28), radius: 24, y: 12)
 
                             if model.canBrowseCompletedPreviews {
-                                previewNavigationButton(
-                                    symbol: .next,
-                                    label: t("button.nextResult"),
-                                    enabled: model.canShowNextPreview && !model.isApplyingFrameAdjustments,
-                                    action: model.showNextPreview
-                                )
+                                HStack {
+                                    previewNavigationButton(
+                                        symbol: .previous,
+                                        label: t("button.previousResult"),
+                                        enabled: model.canShowPreviousPreview && !model.isApplyingFrameAdjustments,
+                                        action: model.showPreviousPreview
+                                    )
+                                    Spacer(minLength: 0)
+                                    previewNavigationButton(
+                                        symbol: .next,
+                                        label: t("button.nextResult"),
+                                        enabled: model.canShowNextPreview && !model.isApplyingFrameAdjustments,
+                                        action: model.showNextPreview
+                                    )
+                                }
+                                .padding(.horizontal, 12)
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -702,10 +918,10 @@ struct ContentView: View {
                         HStack(spacing: 10) {
                             if model.lastSavedURL != nil {
                                 Button(action: model.revealLastSavedResult) {
-                                    GlyphLabel(title: t("button.openSaved"), glyph: .folder)
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .padding(.horizontal, 11)
-                                        .padding(.vertical, 7)
+                                    GlyphLabel(title: t("button.openSaved"), glyph: .folderCheck)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .padding(.horizontal, 12)
+                                        .frame(height: 38)
                                 }
                                 .buttonStyle(SavedResultButtonStyle())
                                 .help(t("button.openSaved.hint"))
@@ -713,8 +929,8 @@ struct ContentView: View {
                                 Button(action: model.exportCurrentResult) {
                                     GlyphLabel(title: t("button.saveas", (model.renderedFormat ?? model.format).rawValue), glyph: .save)
                                         .font(.system(size: 12, weight: .semibold))
-                                        .padding(.horizontal, 13)
-                                        .padding(.vertical, 8)
+                                        .padding(.horizontal, 12)
+                                        .frame(height: 38)
                                 }
                                 .buttonStyle(ExportButtonStyle())
                                 .disabled(model.isLoadingPreview)
@@ -724,11 +940,10 @@ struct ContentView: View {
                                 Button {
                                     manualFrameEditorRequest = request
                                 } label: {
-                                    GlyphLabel(title: t("button.adjustFrames"), glyph: .sliders)
-                                        .font(.system(size: 14, weight: .bold))
-                                        .padding(.horizontal, 18)
-                                        .padding(.vertical, 10)
-                                        .frame(minWidth: 202)
+                                    GlyphLabel(title: t("button.adjustFrames"), glyph: .frameSelect)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .padding(.horizontal, 16)
+                                        .frame(minWidth: 202, minHeight: 38, maxHeight: 38)
                                 }
                                 .buttonStyle(ManualAdjustmentButtonStyle())
                                 .help(t("button.adjustFrames.hint"))
@@ -741,13 +956,9 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(18)
         }
-        .padding(28)
-        .background(panelFill, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(panelBorder)
-        }
+        .background(stageFill)
     }
 }
 
@@ -1521,16 +1732,22 @@ private struct ManualFrameEditor: View {
                             .controlSize(.small)
                     } else {
                         GlyphLabel(title: t("editor.smartSelect"), glyph: .wand)
+                            .font(.system(size: 15, weight: .bold))
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .tint(Color(red: 0.18, green: 0.54, blue: 0.78))
+                .frame(minWidth: 150, minHeight: 42)
                 .disabled(isLoadingCandidates || candidates.isEmpty || isSmartSelecting)
                 .accessibilityIdentifier("manual-frame-smart-select")
                 Button(action: regenerateCandidates) {
                     GlyphLabel(title: t("editor.regenerate"), glyph: .refresh)
+                        .font(.system(size: 15, weight: .semibold))
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
+                .frame(minWidth: 154, minHeight: 42)
                 .disabled(isLoadingCandidates || isSmartSelecting)
                 .accessibilityIdentifier("manual-frame-regenerate")
             }
@@ -1593,18 +1810,24 @@ private struct ManualFrameEditor: View {
             .accessibilityIdentifier("manual-frame-candidates")
 
             HStack {
-                Button(t("editor.cancel"), role: .cancel) { dismiss() }
+                Button(role: .cancel) { dismiss() } label: {
+                    Text(t("editor.cancel"))
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(minWidth: 86, minHeight: 42)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
                 Spacer()
                 Button {
                     onApply(selectedFrames)
                     dismiss()
                 } label: {
                     GlyphLabel(title: t("editor.apply"), glyph: .check)
-                        .font(.system(size: 13, weight: .bold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
+                        .font(.system(size: 15, weight: .bold))
+                        .frame(minWidth: 166, minHeight: 42)
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .disabled(selectedIDs.count != selectionLimit || model.isApplyingFrameAdjustments)
                 .accessibilityIdentifier("manual-frame-apply")
             }
@@ -1721,6 +1944,7 @@ private struct ManualFrameEditor: View {
 
 private struct ShotTesseraMark: View {
     let language: AppLanguage
+    var size: CGFloat = 44
 
     var body: some View {
         Group {
@@ -1737,7 +1961,7 @@ private struct ShotTesseraMark: View {
                     .background(Color.indigo, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
-        .frame(width: 44, height: 44)
+        .frame(width: size, height: size)
     }
 }
 
@@ -1918,88 +2142,71 @@ private struct VideoBatchCard: View {
     let clear: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isCompact ? 7 : 10) {
-            Button(action: choose) {
-                HStack(spacing: 12) {
-                    ProjectIcon(symbol: jobs.isEmpty ? .filmStack : .film, size: 19)
-                        .foregroundStyle(Color(red: 0.42, green: 0.85, blue: 0.91))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(1)
-                        Text(subtitle)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    ProjectIcon(symbol: .plus, size: 14)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(isCompact ? 12 : 15)
-                .background(
-                    isLightAppearance
-                        ? Color.white.opacity(isTargeted ? 0.90 : 0.58)
-                        : Color.white.opacity(isTargeted ? 0.15 : 0.065),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(
-                            isTargeted
-                                ? Color(red: 0.42, green: 0.85, blue: 0.91)
-                                : (isLightAppearance ? Color(red: 0.66, green: 0.72, blue: 0.84).opacity(0.58) : .white.opacity(0.10)),
-                            style: StrokeStyle(lineWidth: 1, dash: jobs.isEmpty ? [5, 4] : [])
-                        )
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(isLocked)
+        Group {
+            if jobs.isEmpty {
+                emptyQueueTarget
+            } else {
+                VStack(spacing: 10) {
+                    QueueVideoList(
+                        jobs: jobs,
+                        isCompact: isCompact,
+                        isLightAppearance: isLightAppearance
+                    )
+                    .frame(maxHeight: .infinity)
 
-            if !jobs.isEmpty {
-                VStack(spacing: isCompact ? 4 : 6) {
-                    ForEach(Array(jobs.prefix(3))) { job in
-                        HStack(spacing: 7) {
-                            Circle()
-                                .fill(statusColor(for: job.state))
-                                .frame(width: 6, height: 6)
-                            Text(job.url.lastPathComponent)
-                                .lineLimit(1)
-                            Spacer()
-                            Text(job.state.label(in: language))
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.system(size: 10, weight: .medium))
-                    }
-                    if jobs.count > 3 {
-                        HStack(spacing: 8) {
-                            Text(language.text("queue.more", jobs.count - 3))
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            clearQueueButton
-                        }
-                    }
-                }
-                .padding(.horizontal, 4)
-
-                if jobs.count <= 3 {
                     HStack {
-                        Spacer()
                         clearQueueButton
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 4)
                 }
             }
         }
+    }
+
+    private var emptyQueueTarget: some View {
+        Button(action: choose) {
+            HStack(spacing: 12) {
+                ProjectIcon(symbol: .videoImport, size: 21)
+                    .foregroundStyle(Color(red: 0.42, green: 0.85, blue: 0.91))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                ProjectIcon(symbol: .plus, size: 15)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(isCompact ? 12 : 15)
+            .background(
+                isLightAppearance
+                    ? Color.white.opacity(isTargeted ? 0.94 : 0.74)
+                    : Color(red: 0.09, green: 0.14, blue: 0.20).opacity(isTargeted ? 1 : 0.88),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        isTargeted
+                            ? Color(red: 0.42, green: 0.85, blue: 0.91)
+                            : .clear,
+                        lineWidth: 1
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isLocked)
     }
 
     private var clearQueueButton: some View {
         Button(action: clear) {
             GlyphLabel(title: language.text("queue.clear"), glyph: .trash)
                 .font(.system(size: 10, weight: .bold))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .frame(height: 30)
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -2009,7 +2216,6 @@ private struct VideoBatchCard: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.22))
         }
-        .shadow(color: Color.red.opacity(0.18), radius: 3, y: 1)
         .help(language.text("queue.clear.hint"))
         .disabled(isLocked)
     }
@@ -2026,14 +2232,177 @@ private struct VideoBatchCard: View {
         jobs.isEmpty ? language.text("video.support") : language.text("video.queueHint")
     }
 
-    private func statusColor(for state: VideoJobState) -> Color {
-        switch state {
-        case .queued: .secondary
-        case .processing: Color(red: 0.42, green: 0.85, blue: 0.91)
-        case .completed: .green
-        case .failed: .red
+}
+
+private struct QueueVideoList: View {
+    let jobs: [VideoJob]
+    let isCompact: Bool
+    let isLightAppearance: Bool
+
+    @State private var contentHeight: CGFloat = 1
+    @State private var contentOffset: CGFloat = 0
+
+    private static let coordinateSpaceName = "shotTesseraQueueList"
+    private var indexColumnWidth: CGFloat {
+        switch String(max(1, jobs.count)).count {
+        case 1, 2: 24
+        case 3: 28
+        default: 36
         }
     }
+
+    var body: some View {
+        GeometryReader { viewport in
+            ZStack(alignment: .trailing) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: isCompact ? 8 : 10) {
+                        ForEach(Array(jobs.enumerated()), id: \.element.id) { index, job in
+                            QueueVideoRow(
+                                index: index + 1,
+                                job: job,
+                                isLightAppearance: isLightAppearance,
+                                indexColumnWidth: indexColumnWidth
+                            )
+                        }
+                    }
+                    .padding(.vertical, 1)
+                    .padding(.trailing, 10)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: QueueContentHeightPreferenceKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    }
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: QueueScrollOffsetPreferenceKey.self,
+                                value: proxy.frame(in: .named(Self.coordinateSpaceName)).minY
+                            )
+                        }
+                    }
+                }
+                .coordinateSpace(name: Self.coordinateSpaceName)
+
+                QueueScrollIndicator(
+                    viewportHeight: viewport.size.height,
+                    contentHeight: contentHeight,
+                    contentOffset: contentOffset,
+                    isLightAppearance: isLightAppearance
+                )
+                .padding(.trailing, 2)
+                .allowsHitTesting(false)
+            }
+        }
+        .onPreferenceChange(QueueContentHeightPreferenceKey.self) { contentHeight = $0 }
+        .onPreferenceChange(QueueScrollOffsetPreferenceKey.self) { contentOffset = $0 }
+    }
+}
+
+private struct QueueScrollIndicator: View {
+    let viewportHeight: CGFloat
+    let contentHeight: CGFloat
+    let contentOffset: CGFloat
+    let isLightAppearance: Bool
+
+    private var isScrollable: Bool { contentHeight > viewportHeight + 1 }
+    private var thumbHeight: CGFloat {
+        guard isScrollable else { return 0 }
+        return min(viewportHeight, max(34, viewportHeight * viewportHeight / contentHeight))
+    }
+    private var thumbOffset: CGFloat {
+        guard isScrollable else { return 0 }
+        let progress = min(1, max(0, -contentOffset / max(1, contentHeight - viewportHeight)))
+        return progress * max(0, viewportHeight - thumbHeight)
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Capsule()
+                .fill(isLightAppearance ? Color.primary.opacity(0.045) : Color.white.opacity(0.055))
+                .frame(width: 4, height: viewportHeight)
+            Capsule()
+                .fill(
+                    isLightAppearance
+                        ? Color(red: 0.20, green: 0.57, blue: 0.64).opacity(0.56)
+                        : Color(red: 0.38, green: 0.85, blue: 0.89).opacity(0.62)
+                )
+                .frame(width: 4, height: thumbHeight)
+                .shadow(color: isLightAppearance ? Color.black.opacity(0.08) : Color.black.opacity(0.18), radius: 1, y: 1)
+                .offset(y: thumbOffset)
+        }
+        .frame(width: 4, height: viewportHeight, alignment: .top)
+        .opacity(isScrollable ? 1 : 0)
+    }
+}
+
+private struct QueueContentHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 1
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct QueueScrollOffsetPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct QueueVideoRow: View {
+    let index: Int
+    let job: VideoJob
+    let isLightAppearance: Bool
+    let indexColumnWidth: CGFloat
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text("\(index)")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(width: indexColumnWidth, alignment: .trailing)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(thumbnailFill)
+                ProjectIcon(symbol: .film, size: 17)
+                    .foregroundStyle(.white.opacity(0.9))
+            }
+            .frame(width: 42, height: 38)
+
+            Text(job.url.lastPathComponent)
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(2)
+                .truncationMode(.tail)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(7)
+        .frame(minHeight: 52)
+        .background(rowFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var rowFill: Color {
+        switch job.state {
+        case .processing:
+            return isLightAppearance ? Color(red: 0.86, green: 0.94, blue: 0.97) : Color(red: 0.10, green: 0.17, blue: 0.27)
+        default:
+            return isLightAppearance ? Color.white.opacity(0.52) : Color.clear
+        }
+    }
+
+    private var thumbnailFill: LinearGradient {
+        switch job.state {
+        case .failed:
+            return LinearGradient(colors: [Color(red: 0.47, green: 0.20, blue: 0.15), Color(red: 0.22, green: 0.11, blue: 0.12)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .processing:
+            return LinearGradient(colors: [Color(red: 0.13, green: 0.34, blue: 0.54), Color(red: 0.07, green: 0.14, blue: 0.29)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        default:
+            return LinearGradient(colors: [Color(red: 0.20, green: 0.33, blue: 0.49), Color(red: 0.07, green: 0.14, blue: 0.26)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
+
 }
 
 private struct ProgressiveStoryboardPreview: View {
@@ -2074,12 +2443,13 @@ private struct ProgressiveStoryboardPreview: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(previewWellFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background {
+            if !isLightAppearance {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.black.opacity(0.14))
+            }
+        }
         .animation(.easeOut(duration: 0.16), value: frames.count)
-    }
-
-    private var previewWellFill: Color {
-        isLightAppearance ? Color(red: 0.77, green: 0.80, blue: 0.86) : Color.black.opacity(0.14)
     }
 }
 
@@ -2089,7 +2459,7 @@ private struct EmptyPreview: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            ShotTesseraMark(language: language).scaleEffect(1.7)
+            ShotTesseraMark(language: language, size: 72)
             Text(language.text("preview.empty.title"))
                 .font(.system(size: 22, weight: .semibold, design: .rounded))
                 .foregroundStyle(PreviewText.primary)
@@ -2100,11 +2470,12 @@ private struct EmptyPreview: View {
                 .frame(maxWidth: 310)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(previewWellFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    private var previewWellFill: Color {
-        isLightAppearance ? Color(red: 0.77, green: 0.80, blue: 0.86) : Color.black.opacity(0.14)
+        .background {
+            if !isLightAppearance {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.black.opacity(0.14))
+            }
+        }
     }
 }
 
@@ -2134,11 +2505,11 @@ private struct GridChoiceStyle: ButtonStyle {
 
     private func idleFill(isPressed: Bool) -> Color {
         guard colorScheme == .light else {
-            return Color.white.opacity(isPressed ? 0.14 : 0.06)
+            return Color(red: 0.10, green: 0.15, blue: 0.21).opacity(isPressed ? 0.84 : 1)
         }
         return isPressed
-            ? Color(red: 0.83, green: 0.87, blue: 0.94)
-            : Color(red: 0.90, green: 0.92, blue: 0.97)
+            ? Color(red: 0.86, green: 0.93, blue: 0.95)
+            : Color(red: 0.93, green: 0.97, blue: 0.98)
     }
 }
 
@@ -2146,7 +2517,8 @@ private struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(Color(red: 0.04, green: 0.06, blue: 0.08))
-            .background(LinearGradient(colors: [Color(red: 0.42, green: 0.87, blue: 0.89), Color(red: 0.64, green: 0.57, blue: 0.96)], startPoint: .leading, endPoint: .trailing), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .background(SelectionPalette.active, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(.white.opacity(0.18)) }
             .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
@@ -2164,14 +2536,7 @@ private struct SavedResultButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(Color(red: 0.04, green: 0.11, blue: 0.16))
-            .background(
-                LinearGradient(
-                    colors: [Color(red: 0.39, green: 0.86, blue: 0.89), Color(red: 0.50, green: 0.72, blue: 0.98)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                in: Capsule()
-            )
+            .background(SelectionPalette.active, in: Capsule())
             .overlay { Capsule().strokeBorder(.white.opacity(0.28)) }
             .shadow(color: Color(red: 0.30, green: 0.75, blue: 0.94).opacity(0.24), radius: 10, y: 4)
             .opacity(configuration.isPressed ? 0.78 : 1)
@@ -2182,44 +2547,9 @@ private struct ManualAdjustmentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(Color(red: 0.88, green: 0.96, blue: 1.00))
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.10, green: 0.31, blue: 0.44),
-                        Color(red: 0.17, green: 0.27, blue: 0.51)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                in: Capsule()
-            )
+            .background(Color(red: 0.07, green: 0.22, blue: 0.31), in: Capsule())
             .overlay { Capsule().strokeBorder(Color(red: 0.42, green: 0.84, blue: 0.96).opacity(0.72)) }
             .shadow(color: Color(red: 0.25, green: 0.68, blue: 0.91).opacity(configuration.isPressed ? 0.08 : 0.18), radius: 8, y: 3)
             .opacity(configuration.isPressed ? 0.80 : 1)
-    }
-}
-
-private struct CompactOptionSurface: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
-
-    func body(content: Content) -> some View {
-        let isLight = colorScheme == .light
-        return content
-            .padding(.horizontal, 9)
-            .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
-            .background(
-                isLight ? Color(red: 0.90, green: 0.92, blue: 0.97) : Color.white.opacity(0.065),
-                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(isLight ? Color(red: 0.65, green: 0.70, blue: 0.82).opacity(0.48) : .white.opacity(0.08))
-            }
-    }
-}
-
-private extension View {
-    func compactOptionSurface() -> some View {
-        modifier(CompactOptionSurface())
     }
 }
