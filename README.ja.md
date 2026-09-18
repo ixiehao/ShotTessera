@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-![プロジェクト所有者が撮影した湖上映像から ShotTessera が九分割の絵コンテを生成するアニメーション](docs/assets/video-to-storyboard-demo.gif)
+![v0.2.7 の日本語版 Batch Studio。動画キュー、絵コンテのプレビュー、設定を一つのワークスペースで表示](docs/assets/batch-studio-v027-ja.png)
 
 **動画ワンクリック・スクリーンショットモンタージュ（ShotTessera）** は、動画から代表的なフレームを選び、一枚の見やすい絵コンテ画像にまとめるネイティブ macOS アプリです。`tessera` はモザイクを構成する小片を意味します。
 
