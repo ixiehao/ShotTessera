@@ -90,3 +90,12 @@ swift scripts/create_install_guide.swift \
 
 Replace `zh` with `en` or `ja` for the other localized guides. These original
 project assets are released under the [MIT License](../../LICENSE).
+
+## Japanese README product screenshot
+
+`batch-studio-v027-ja.png` is a clean 1880 × 1336 Retina capture of the v0.2.7
+Batch Studio empty state with the in-app language set to Japanese. It is the
+hero image used by `README.ja.md`, so Japanese readers see the current product
+interface rather than an earlier promotional illustration. The capture contains
+no user videos or third-party content and is released as an original project
+asset under the [MIT License](../../LICENSE).
