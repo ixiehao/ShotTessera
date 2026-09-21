@@ -31,59 +31,51 @@ enum FrameSelection {
 
     static func chooseFrames(from frames: [FrameDescriptor], count: Int) -> [FrameDescriptor] {
         guard count > 0, !frames.isEmpty else { return [] }
-        let pool = frames.filter(\.isUsable)
+        let usablePool = frames.filter(\.isUsable)
         // A grid of black or excessively blurry cards is not a useful storyboard.
         // The analyzer turns this empty result into a clear user-facing error.
-        guard !pool.isEmpty else { return [] }
+        guard !usablePool.isEmpty else { return [] }
+        // Prefer real video content over title cards, cover artwork, and text-only
+        // warnings. If a clip genuinely contains only such frames, fall back so we
+        // still produce a result rather than leaving the storyboard blank.
+        let contentPool = usablePool.filter { !$0.isLikelyNonContentGraphic }
+        let pool = contentPool.isEmpty ? usablePool : contentPool
         let ranges = sceneRanges(in: pool)
-        var sceneWinners = ranges.compactMap { range in
-            pool[range].max { $0.qualityScore < $1.qualityScore }
+        let sceneIndexByID = sceneIndexMap(ranges: ranges, frames: pool)
+
+        // Pick representatives from stable shots first. This replaces the old
+        // fixed time buckets: a weak intro, credit card, or empty landscape no
+        // longer receives a tile solely because it occupies part of the runtime.
+        var candidates: [FrameDescriptor] = []
+        for range in ranges {
+            let shot = Array(pool[range])
+            guard !shot.isEmpty else { continue }
+            let stable = stableCandidates(in: shot)
+            candidates.append(contentsOf: stable.prefix(2))
+        }
+        candidates = uniqueCandidates(candidates)
+
+        // Long, low-cut scenes need more than two options for a large grid. Add
+        // the remaining video frames only as a candidate reservoir; the final
+        // MMR pass below still rejects near-identical moments.
+        if candidates.count < count * 2 {
+            candidates.append(contentsOf: pool)
+            candidates = uniqueCandidates(candidates)
         }
 
-        // A short video may have fewer cuts than requested grid cells. Add the best
-        // candidate from each time bucket so that the output still tells its story.
-        if sceneWinners.count < count {
-            let start = pool.first?.time ?? 0
-            let end = pool.last?.time ?? start
-            let span = max(0.001, end - start)
-            for bucket in 0..<count {
-                let lower = start + span * Double(bucket) / Double(count)
-                let upper = start + span * Double(bucket + 1) / Double(count)
-                if let candidate = pool
-                    .filter({ $0.time >= lower && ($0.time < upper || bucket == count - 1) })
-                    .max(by: { $0.qualityScore < $1.qualityScore }) {
-                    sceneWinners.append(candidate)
-                }
-            }
-        }
+        let selected = selectStoryDiverse(
+            from: candidates,
+            sceneIndexByID: sceneIndexByID,
+            count: count
+        )
+        guard selected.count < count else { return selected.sorted { $0.time < $1.time } }
 
-        var unique: [FrameDescriptor] = []
-        for candidate in sceneWinners.sorted(by: { $0.time < $1.time }) {
-            let isDuplicate = unique.contains {
-                isVisualDuplicate($0, candidate, strict: true)
-            }
-            if !isDuplicate { unique.append(candidate) }
-        }
-
-        if unique.count < count {
-            let orderedExtras = pool.sorted { $0.qualityScore > $1.qualityScore }
-            for candidate in orderedExtras where unique.count < count {
-                let isDuplicate = unique.contains {
-                    isVisualDuplicate($0, candidate, strict: true)
-                }
-                if !isDuplicate { unique.append(candidate) }
-            }
-        }
-
-        // A requested sheet must never render empty cells just because a video
-        // contains a single long shot. Fill remaining slots from evenly distributed
-        // time buckets, relaxing only visual-duplication rules—not black/blur checks.
-        if unique.count < count {
-            unique.append(contentsOf: relaxedBucketFill(from: pool, current: unique, count: count))
-        }
-
-        guard unique.count > count else { return unique.sorted { $0.time < $1.time } }
-        return evenlySpaced(unique.sorted { $0.time < $1.time }, count: count)
+        // A very static clip can legitimately have few visually distinct frames.
+        // Complete the requested grid without reintroducing unusable/title frames.
+        let filled = selected + relaxedBucketFill(from: pool, current: selected, count: count)
+        var ids = Set<Int>()
+        let distinctTimestamps = filled.filter { ids.insert($0.id).inserted }
+        return Array(distinctTimestamps.prefix(count)).sorted { $0.time < $1.time }
     }
 
     static func evenlySpaced(_ frames: [FrameDescriptor], count: Int) -> [FrameDescriptor] {
@@ -105,6 +97,89 @@ enum FrameSelection {
         // Average hashes alone can miss same-stage frames with small motion. Combine
         // them with histogram distance for a less brittle near-duplicate signal.
         return hamming < (strict ? 18 : 8) && histDistance < (strict ? 0.035 : 0.012)
+    }
+
+    private static func sceneIndexMap(
+        ranges: [Range<Int>],
+        frames: [FrameDescriptor]
+    ) -> [Int: Int] {
+        var output: [Int: Int] = [:]
+        for (scene, range) in ranges.enumerated() {
+            for frame in frames[range] { output[frame.id] = scene }
+        }
+        return output
+    }
+
+    private static func stableCandidates(in shot: [FrameDescriptor]) -> [FrameDescriptor] {
+        guard shot.count > 2 else { return shot.sorted { $0.qualityScore > $1.qualityScore } }
+        // Boundary samples frequently land on edits. Retain the entire shot when
+        // it is short, otherwise prefer its interior while leaving a fallback.
+        let inset = shot.count >= 5 ? 1 : 0
+        let interior = Array(shot.dropFirst(inset).dropLast(inset))
+        return interior.sorted { $0.qualityScore > $1.qualityScore }
+    }
+
+    private static func uniqueCandidates(_ candidates: [FrameDescriptor]) -> [FrameDescriptor] {
+        var output: [FrameDescriptor] = []
+        for candidate in candidates.sorted(by: { $0.qualityScore > $1.qualityScore }) {
+            guard !output.contains(where: { $0.id == candidate.id }) else { continue }
+            if !output.contains(where: { isVisualDuplicate($0, candidate, strict: true) }) {
+                output.append(candidate)
+            }
+        }
+        return output
+    }
+
+    private static func selectStoryDiverse(
+        from candidates: [FrameDescriptor],
+        sceneIndexByID: [Int: Int],
+        count: Int
+    ) -> [FrameDescriptor] {
+        guard count > 0 else { return [] }
+        let maxQuality = max(0.001, candidates.map(\.qualityScore).max() ?? 0.001)
+        var remaining = candidates
+        var selected: [FrameDescriptor] = []
+        var sceneUseCount: [Int: Int] = [:]
+
+        while selected.count < count, !remaining.isEmpty {
+            let winner = remaining.max { lhs, rhs in
+                selectionUtility(lhs, selected: selected, sceneIndexByID: sceneIndexByID, sceneUseCount: sceneUseCount, maxQuality: maxQuality)
+                    < selectionUtility(rhs, selected: selected, sceneIndexByID: sceneIndexByID, sceneUseCount: sceneUseCount, maxQuality: maxQuality)
+            }!
+            selected.append(winner)
+            if let scene = sceneIndexByID[winner.id] { sceneUseCount[scene, default: 0] += 1 }
+            remaining.removeAll { $0.id == winner.id || isVisualDuplicate($0, winner, strict: true) }
+        }
+        return selected
+    }
+
+    private static func selectionUtility(
+        _ candidate: FrameDescriptor,
+        selected: [FrameDescriptor],
+        sceneIndexByID: [Int: Int],
+        sceneUseCount: [Int: Int],
+        maxQuality: Float
+    ) -> Float {
+        let quality = candidate.qualityScore / maxQuality
+        guard !selected.isEmpty else { return quality }
+        let novelty = selected.map { existing -> Float in
+            let histogram = histogramDistance(candidate.histogram, existing.histogram)
+            let hash = Float(hammingDistance(candidate.fingerprint, existing.fingerprint)) / 64
+            return min(1, histogram * 1.8 + hash * 0.45)
+        }.min() ?? 1
+        let sameScenePenalty: Float
+        if let scene = sceneIndexByID[candidate.id] {
+            switch sceneUseCount[scene, default: 0] {
+            case 0: sameScenePenalty = 0
+            case 1: sameScenePenalty = 0.13
+            default: sameScenePenalty = 0.32
+            }
+        } else {
+            sameScenePenalty = 0
+        }
+        // Time is intentionally absent: chronological spread is achieved by
+        // scene diversity, not by reserving slots for low-value timestamps.
+        return quality * 0.72 + novelty * 0.48 - sameScenePenalty
     }
 
     private static func relaxedBucketFill(

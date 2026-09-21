@@ -91,6 +91,16 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(TimestampFormatter.string(for: .infinity), "00:00:00")
     }
 
+    func testEditableTimestampRoundTripsMillisecondsAndAcceptsShortForms() throws {
+        XCTAssertEqual(TimestampFormatter.editableString(for: 3_661.234), "01:01:01.234")
+        XCTAssertEqual(try XCTUnwrap(TimestampFormatter.editableSeconds(from: "01:01:01.234")), 3_661.234, accuracy: 0.000_1)
+        XCTAssertEqual(try XCTUnwrap(TimestampFormatter.editableSeconds(from: "01:02.5")), 62.5, accuracy: 0.000_1)
+        XCTAssertEqual(try XCTUnwrap(TimestampFormatter.editableSeconds(from: "1.250")), 1.25, accuracy: 0.000_1)
+        XCTAssertNil(TimestampFormatter.editableSeconds(from: "00:60:00"))
+        XCTAssertNil(TimestampFormatter.editableSeconds(from: "00:00:60"))
+        XCTAssertTrue(try XCTUnwrap(TimestampFormatter.editableSeconds(from: "\(Int.max):59:59")).isFinite)
+    }
+
     func testEveryInAppLanguageHasAllRequiredTranslations() {
         for language in AppLanguage.allCases {
             for key in AppLanguage.requiredLocalizationKeys {
@@ -162,6 +172,27 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertNotEqual(plainData, titledData)
     }
 
+    func testComposerUsesTheSelectedStoryboardBackground() throws {
+        let sourceImage = NSImage(size: NSSize(width: 320, height: 180))
+        sourceImage.lockFocus()
+        NSColor(calibratedRed: 0.16, green: 0.34, blue: 0.58, alpha: 1).setFill()
+        NSBezierPath(rect: NSRect(x: 0, y: 0, width: 320, height: 180)).fill()
+        sourceImage.unlockFocus()
+        let imageData = try XCTUnwrap(sourceImage.tiffRepresentation)
+        let frames = (0..<9).map { CapturedFrame(id: $0, time: Double($0), jpegData: imageData) }
+        let result = StoryboardResult(frames: frames, sourceURL: URL(fileURLWithPath: "/tmp/sample.mp4"))
+
+        var cinema = ExportSettings(gridSide: 3, format: .png, width: 1_920)
+        cinema.background = .cinema
+        var ivory = cinema
+        ivory.background = .ivory
+
+        let cinemaData = try StoryboardComposer.render(result: result, settings: cinema)
+        let ivoryData = try StoryboardComposer.render(result: result, settings: ivory)
+        XCTAssertNotEqual(cinemaData, ivoryData)
+        XCTAssertNotEqual(StoryboardBackground.cinema.rgb.red, StoryboardBackground.ivory.rgb.red)
+    }
+
     func testImageCodecJPEGRoundTripPreservesDimensions() throws {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let context = try XCTUnwrap(
@@ -224,6 +255,69 @@ final class FrameSelectionTests: XCTestCase {
         )
         XCTAssertGreaterThanOrEqual(manualCandidates.count, 9)
         XCTAssertEqual(ManualFrameSelector.selectIDs(from: manualCandidates, count: 9).count, 9)
+
+        let manuallyPositionedFrame = try await ManualFrameExtractor.captureFrame(
+            from: sourceURL,
+            at: 1.25,
+            identifier: 1_000_001
+        )
+        XCTAssertEqual(manuallyPositionedFrame.id, 1_000_001)
+        XCTAssertEqual(manuallyPositionedFrame.time, 1.25, accuracy: 0.12)
+        XCTAssertFalse(manuallyPositionedFrame.jpegData.isEmpty)
+        XCTAssertGreaterThan(manuallyPositionedFrame.aspectRatio, 1)
+    }
+
+    func testSharpnessComparisonUsesThreeFramesOnBothSidesOfTheTarget() {
+        let times = ManualFrameExtractor.sharpnessComparisonTimes(
+            around: 5,
+            duration: 12,
+            frameRate: 30
+        )
+
+        XCTAssertEqual(times.count, 7)
+        XCTAssertEqual(try XCTUnwrap(times.first), 5 - (3.0 / 30.0), accuracy: 0.000_001)
+        XCTAssertEqual(times[3], 5, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(times.last), 5 + (3.0 / 30.0), accuracy: 0.000_001)
+
+        let atStart = ManualFrameExtractor.sharpnessComparisonTimes(
+            around: 0,
+            duration: 12,
+            frameRate: 30
+        )
+        XCTAssertEqual(try XCTUnwrap(atStart.first), 0, accuracy: 0.000_001)
+        XCTAssertLessThan(atStart.count, 7)
+        XCTAssertEqual(Set(atStart.map { Int(($0 * 30).rounded()) }).count, atStart.count)
+    }
+
+    func testManualCandidateProbeUsesACompactExactNeighborhood() {
+        let times = ManualFrameExtractor.candidateComparisonTimes(
+            around: 5,
+            duration: 12,
+            frameRate: 30
+        )
+
+        XCTAssertEqual(times.count, 3)
+        XCTAssertEqual(try XCTUnwrap(times.first), 5 - 0.45, accuracy: 0.000_001)
+        XCTAssertEqual(times[1], 5, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(times.last), 5 + 0.45, accuracy: 0.000_001)
+
+        let atStart = ManualFrameExtractor.candidateComparisonTimes(
+            around: 0,
+            duration: 12,
+            frameRate: 30
+        )
+        XCTAssertEqual(atStart.count, 2)
+        XCTAssertEqual(try XCTUnwrap(atStart.first), 0, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(atStart.last), 0.45, accuracy: 0.000_001)
+    }
+
+    func testSharpnessComparisonCapsOnlyItsAnalysisDecodeResolution() {
+        // The winning frame must still be decoded at the requested output edge;
+        // this cap applies solely to the seven lightweight scoring decodes.
+        XCTAssertEqual(ManualFrameExtractor.sharpnessAnalysisMaximumEdge(for: 1_600), 480)
+        XCTAssertEqual(ManualFrameExtractor.sharpnessAnalysisMaximumEdge(for: 480), 480)
+        XCTAssertEqual(ManualFrameExtractor.sharpnessAnalysisMaximumEdge(for: 320), 320)
+        XCTAssertEqual(ManualFrameExtractor.sharpnessAnalysisMaximumEdge(for: 0), 1)
     }
 
     func testStoryboardAspectUsesTheSourceForPortraitAndSupportsCommonOverrides() {
@@ -365,6 +459,65 @@ final class FrameSelectionTests: XCTestCase {
         var portrait = frame(id: 1, time: 1, histogram: [0.8, 0.2], sharpness: 0.18, fingerprint: .max)
         portrait.peopleScore = 0.32
         XCTAssertEqual(FrameSelection.chooseFrames(from: [landscape, portrait], count: 1).first?.id, portrait.id)
+    }
+
+    func testTextOnlyCoverAndWarningFramesAreExcludedWhenVideoContentExists() {
+        var cover = frame(id: 0, time: 0, histogram: [0.1, 0.9], sharpness: 0.30)
+        cover.textOverlayScore = 0.72
+        var warning = frame(id: 1, time: 1, histogram: [0.2, 0.8], sharpness: 0.28)
+        warning.textOverlayScore = 0.88
+        var person = frame(id: 2, time: 2, histogram: [0.7, 0.3], sharpness: 0.20)
+        person.peopleScore = 0.34
+        let scenery = frame(id: 3, time: 3, histogram: [0.6, 0.4], sharpness: 0.19)
+
+        let selected = FrameSelection.chooseFrames(from: [cover, warning, person, scenery], count: 2)
+        XCTAssertEqual(Set(selected.map(\.id)), Set([person.id, scenery.id]))
+    }
+
+    func testSparseWhiteAndDarkTitleCardsAreExcludedWithoutPeople() {
+        var whiteCard = frame(id: 0, time: 0, histogram: [0.05, 0.95], sharpness: 0.26)
+        whiteCard.brightRatio = 0.84
+        whiteCard.dominantToneRatio = 0.88
+        var darkCard = frame(id: 1, time: 1, histogram: [0.90, 0.10], blackRatio: 0.74, sharpness: 0.24)
+        darkCard.dominantToneRatio = 0.90
+        let scene = frame(id: 2, time: 2, histogram: [0.45, 0.55], sharpness: 0.20)
+
+        let selected = FrameSelection.chooseFrames(from: [whiteCard, darkCard, scene], count: 1)
+        XCTAssertEqual(selected.map(\.id), [scene.id])
+    }
+
+    func testAHumanOnAnOtherwiseSparseFramePreventsFalseTitleCardRejection() {
+        var brightHumanScene = frame(id: 0, time: 0, histogram: [0.05, 0.95], sharpness: 0.20)
+        brightHumanScene.brightRatio = 0.86
+        brightHumanScene.dominantToneRatio = 0.90
+        brightHumanScene.peopleScore = 0.38
+
+        XCTAssertFalse(brightHumanScene.isLikelyNonContentGraphic)
+        XCTAssertEqual(FrameSelection.chooseFrames(from: [brightHumanScene], count: 1).map(\.id), [0])
+    }
+
+    func testStorySelectionDoesNotReserveSlotsForLowValueTimestamps() {
+        var intro = frame(id: 0, time: 0, histogram: [1, 0], sharpness: 0.03)
+        intro.textOverlayScore = 0.45 // Normal overlay: not a hard title-card rejection.
+        let dialogue = frame(id: 1, time: 10, histogram: [0.7, 0.3], sharpness: 0.22, fingerprint: 0x00FF)
+        var action = frame(id: 2, time: 20, histogram: [0.3, 0.7], sharpness: 0.20, fingerprint: 0xFF00)
+        action.bodyScore = 0.62
+        action.peopleScore = 0.62
+        action.motionScore = 0.72
+        let credits = frame(id: 3, time: 30, histogram: [0.45, 0.55], sharpness: 0.03, fingerprint: 0xF0F0)
+
+        let selected = FrameSelection.chooseFrames(from: [intro, dialogue, action, credits], count: 2)
+        XCTAssertEqual(Set(selected.map(\.id)), Set([dialogue.id, action.id]))
+    }
+
+    func testReadableActionPoseOutranksAnEmptyLandscape() {
+        let landscape = frame(id: 0, time: 0, histogram: [0.2, 0.8], sharpness: 0.24, fingerprint: 1)
+        var action = frame(id: 1, time: 1, histogram: [0.8, 0.2], sharpness: 0.17, fingerprint: .max)
+        action.peopleScore = 0.58
+        action.bodyScore = 0.58
+        action.motionScore = 0.68
+
+        XCTAssertEqual(FrameSelection.chooseFrames(from: [landscape, action], count: 1).first?.id, action.id)
     }
 
     @MainActor

@@ -8,6 +8,34 @@ enum ExportFormat: String, CaseIterable, Identifiable, Sendable {
     var fileExtension: String { self == .png ? "png" : "jpg" }
 }
 
+/// Purposeful, low-saturation canvases for a contact sheet. These colors keep
+/// a visual boundary around film frames without competing with the footage.
+enum StoryboardBackground: String, CaseIterable, Identifiable, Sendable {
+    case cinema
+    case ivory
+    case navy
+    case mist
+    case evergreen
+    case rose
+
+    var id: Self { self }
+
+    var rgb: (red: Double, green: Double, blue: Double) {
+        switch self {
+        case .cinema: (0.055, 0.063, 0.086)
+        case .ivory: (0.945, 0.922, 0.879)
+        case .navy: (0.055, 0.145, 0.255)
+        case .mist: (0.824, 0.890, 0.945)
+        case .evergreen: (0.094, 0.275, 0.224)
+        case .rose: (0.925, 0.796, 0.800)
+        }
+    }
+
+    func label(in language: AppLanguage) -> String {
+        language.text("background.\(rawValue)")
+    }
+}
+
 enum StoryboardGrid {
     /// Six options keep the controls to two compact rows.
     static let availableSides = Array(3...8)
@@ -71,6 +99,7 @@ struct ExportSettings: Sendable {
     var language: AppLanguage = .chinese
     var format: ExportFormat = .png
     var width: Int = 2560
+    var background: StoryboardBackground = .cinema
     var showTimestamps = false
     var showTitleWatermark = false
 
@@ -102,6 +131,49 @@ enum TimestampFormatter {
         let minutes = (totalSeconds % 3_600) / 60
         let remainder = totalSeconds % 60
         return String(format: "%02d:%02d:%02d", hours, minutes, remainder)
+    }
+
+    /// A stable, editable representation for manual timeline positioning.
+    /// Keep this separate from the short timestamp burned into thumbnails.
+    static func editableString(for seconds: Double) -> String {
+        guard seconds.isFinite else { return "00:00:00.000" }
+        let milliseconds = max(0, Int((seconds * 1_000).rounded()))
+        let hours = milliseconds / 3_600_000
+        let minutes = (milliseconds % 3_600_000) / 60_000
+        let remainderSeconds = (milliseconds % 60_000) / 1_000
+        let remainderMilliseconds = milliseconds % 1_000
+        return String(format: "%02d:%02d:%02d.%03d", hours, minutes, remainderSeconds, remainderMilliseconds)
+    }
+
+    /// Accepts `SS.mmm`, `MM:SS.mmm`, or `HH:MM:SS.mmm` so people can enter a
+    /// precise moment without having to fill leading units. The canonical
+    /// display is always `HH:MM:SS.mmm`.
+    static func editableSeconds(from text: String) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard !trimmed.isEmpty else { return nil }
+        let pieces = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+        guard (1...3).contains(pieces.count), !pieces.contains(where: { $0.isEmpty }) else { return nil }
+        guard let last = Double(pieces[pieces.count - 1]), last.isFinite, last >= 0, last < 60 else { return nil }
+
+        switch pieces.count {
+        case 1:
+            return last
+        case 2:
+            guard let minutes = Int(pieces[0]), minutes >= 0 else { return nil }
+            // Do the conversion before multiplication. A pasted, pathological
+            // minute value must be rejected or clamped by the caller, never
+            // overflow an Int and terminate the app.
+            let seconds = Double(minutes) * 60 + last
+            return seconds.isFinite ? seconds : nil
+        case 3:
+            guard let hours = Int(pieces[0]), hours >= 0,
+                  let minutes = Int(pieces[1]), (0..<60).contains(minutes) else { return nil }
+            let seconds = Double(hours) * 3_600 + Double(minutes) * 60 + last
+            return seconds.isFinite ? seconds : nil
+        default:
+            return nil
+        }
     }
 }
 
@@ -246,6 +318,8 @@ struct FrameDescriptor: Identifiable, Sendable {
     let histogram: [Float]
     let luminance: Float
     let blackRatio: Float
+    var brightRatio: Float = 0
+    var dominantToneRatio: Float = 0
     let sharpness: Float
     let fingerprint: UInt64
     let previewData: Data?
@@ -253,6 +327,39 @@ struct FrameDescriptor: Identifiable, Sendable {
     /// source-matched layout never needs another image decode.
     var aspectRatio: Double = 16.0 / 9.0
     var peopleScore: Float = 0
+    /// Face and body signals are kept separately: dialogue scenes tend to have
+    /// clear faces, while action scenes often need a readable full-body pose.
+    var faceScore: Float = 0
+    var bodyScore: Float = 0
+    var faceCount: Int = 0
+    /// Low-resolution temporal signal calculated from adjacent samples. It is
+    /// deliberately modest in the final score: movement is useful only when a
+    /// person or action is still visually readable.
+    var motionScore: Float = 0
+    /// A large jump on both sides is usually a cut, fade, or transition rather
+    /// than a usable moment inside a shot.
+    var transitionScore: Float = 0
+    /// Derived locally with Vision from the lightweight analysis image. A high
+    /// value usually indicates title cards, warning screens, or cover artwork.
+    var textOverlayScore: Float = 0
+
+    var isVisuallySparseCard: Bool {
+        let mostlyWhite = brightRatio >= 0.58 && luminance >= 0.68
+        let mostlyDark = blackRatio >= 0.58 && luminance <= 0.30
+        return mostlyWhite || mostlyDark || dominantToneRatio >= 0.78
+    }
+
+    var isLikelyNonContentGraphic: Bool {
+        guard peopleScore < 0.08 else { return false }
+        // Sparse white/black slides often contain too little text for OCR to
+        // cross the text-only threshold. Their overwhelmingly uniform luminance
+        // still distinguishes them from a real bright or dark scene.
+        // Normal subtitles and small watermarks are common in source material.
+        // Only a genuinely dominant text screen is a hard rejection here;
+        // temporal title-run filtering makes the complementary decision.
+        let textHeavy = textOverlayScore >= 0.65
+        return textHeavy || isVisuallySparseCard
+    }
 
     var isUsable: Bool {
         blackRatio < 0.82 && luminance > 0.045 && sharpness > 0.012
@@ -262,10 +369,21 @@ struct FrameDescriptor: Identifiable, Sendable {
         let exposure = min(1, max(0, (luminance - 0.08) / 0.40))
         let detail = min(1, sharpness / 0.18)
         let darknessPenalty = blackRatio * 1.4
-        // A detected face or full body is a deliberate preference, not merely a
-        // tie-breaker. Videos with no detected people still rank by visual quality.
-        let personPreference: Float = peopleScore > 0.05 ? 0.45 + peopleScore * 0.60 : 0
-        return max(0, exposure * 0.35 + detail * 0.55 + personPreference - darknessPenalty)
+        let facePreference: Float = faceScore > 0.05 ? 0.42 + faceScore * 0.56 : 0
+        let bodyPreference: Float = bodyScore > 0.05 ? 0.26 + bodyScore * 0.40 : 0
+        // Manual selection and older cached descriptors only carry the combined
+        // person signal, so preserve that useful fallback without double-counting
+        // the richer Vision metrics above.
+        let personFallback: Float = faceScore <= 0.05 && bodyScore <= 0.05 && peopleScore > 0.05
+            ? 0.38 + peopleScore * 0.52
+            : 0
+        let interactionPreference: Float = faceCount >= 2 ? 0.20 : 0
+        // A readable action pose receives a small bonus, but fast motion alone
+        // never outranks a stable dramatic shot.
+        let actionPreference = bodyScore * motionScore * 0.24
+        let transitionPenalty = transitionScore * 0.34
+        let textPenalty: Float = isLikelyNonContentGraphic ? 0.55 : 0
+        return max(0, exposure * 0.35 + detail * 0.55 + facePreference + bodyPreference + personFallback + interactionPreference + actionPreference - darknessPenalty - transitionPenalty - textPenalty)
     }
 }
 

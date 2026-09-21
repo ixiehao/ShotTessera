@@ -12,7 +12,7 @@ struct VideoStoryboardAnalyzer: Sendable {
     private let maximumAnalysisSamples = 144
     private let minimumAnalysisEdge: CGFloat = 480
     private let maximumAnalysisEdge: CGFloat = 1280
-    private let maximumVisionCandidates = 24
+    private let maximumVisionCandidates = 32
 
     func analyze(
         videoURL: URL,
@@ -60,6 +60,8 @@ struct VideoStoryboardAnalyzer: Sendable {
                     histogram: metrics.histogram,
                     luminance: metrics.luminance,
                     blackRatio: metrics.blackRatio,
+                    brightRatio: metrics.brightRatio,
+                    dominantToneRatio: metrics.dominantToneRatio,
                     sharpness: metrics.sharpness,
                     fingerprint: metrics.fingerprint,
                     previewData: previewData
@@ -73,29 +75,38 @@ struct VideoStoryboardAnalyzer: Sendable {
         }
 
         guard !descriptors.isEmpty else { throw StoryboardError.unreadableVideo }
+        descriptors = addingTemporalSignals(to: descriptors)
 
         // Vision is comparatively expensive. Score a compact blend of distributed
         // and high-quality candidates instead of inspecting the entire timeline.
         let visionSampleCount = min(
             descriptors.count,
-            min(maximumVisionCandidates, max(12, targetCount / 3))
+            min(maximumVisionCandidates, max(16, targetCount * 2))
         )
         let visionCandidates = peopleCandidates(from: descriptors, count: visionSampleCount)
-        var scoreByID: [Int: Float] = [:]
+        var peopleSignalsByID: [Int: PersonSignals] = [:]
+        var textScoreByID: [Int: Float] = [:]
         for (offset, candidate) in visionCandidates.enumerated() {
             try Task.checkCancellation()
-            let score: Float? = autoreleasepool {
+            let scores: (people: PersonSignals, text: Float)? = autoreleasepool {
                 guard let data = candidate.previewData, let image = ImageCodec.cgImage(from: data) else { return nil }
-                return peopleScore(in: visionPreview(from: image))
+                let preview = visionPreview(from: image)
+                return (personSignals(in: preview), textOverlayScore(in: preview))
             }
-            if let score {
-                scoreByID[candidate.id] = score
+            if let scores {
+                peopleSignalsByID[candidate.id] = scores.people
+                textScoreByID[candidate.id] = scores.text
             }
             progress(0.58 + 0.14 * Double(offset + 1) / Double(visionCandidates.count))
         }
         descriptors = descriptors.map { descriptor in
             var updated = descriptor
-            updated.peopleScore = scoreByID[descriptor.id] ?? 0
+            let signals = peopleSignalsByID[descriptor.id] ?? PersonSignals()
+            updated.peopleScore = signals.score
+            updated.faceScore = signals.faceScore
+            updated.bodyScore = signals.bodyScore
+            updated.faceCount = signals.faceCount
+            updated.textOverlayScore = textScoreByID[descriptor.id] ?? 0
             return updated
         }
         progress(0.72)
@@ -104,15 +115,36 @@ struct VideoStoryboardAnalyzer: Sendable {
         guard !selected.isEmpty else { throw StoryboardError.noUsableFrames }
 
         var captured: [CapturedFrame] = []
+        let finalFrameEdge = analysisMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
         for (offset, descriptor) in selected.enumerated() {
             try Task.checkCancellation()
             guard let data = descriptor.previewData else { continue }
-            let frame = CapturedFrame(
+            let fallback = CapturedFrame(
                 id: descriptor.id,
                 time: descriptor.time,
                 jpegData: data,
                 aspectRatio: descriptor.aspectRatio
             )
+            // The broad scan above deliberately favors speed. Before committing
+            // each final tile, make a precise +/- 3-frame comparison so motion
+            // blur does not become the image exported to the storyboard.
+            let frame: CapturedFrame
+            do {
+                frame = try await ManualFrameExtractor.captureSharpestFrame(
+                    from: asset,
+                    duration: duration,
+                    at: descriptor.time,
+                    identifier: descriptor.id,
+                    maximumEdge: finalFrameEdge,
+                    compressionQuality: 0.92
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // A corrupted timestamp must not blank an otherwise usable
+                // storyboard tile; retain the analysis thumbnail as a fallback.
+                frame = fallback
+            }
             captured.append(frame)
             onPreviewFrame(frame, captured.count, selected.count)
             progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))
@@ -158,11 +190,19 @@ struct VideoStoryboardAnalyzer: Sendable {
     private func peopleCandidates(from descriptors: [FrameDescriptor], count: Int) -> [FrameDescriptor] {
         let usable = descriptors.filter(\.isUsable)
         guard !usable.isEmpty, count > 0 else { return [] }
-        let distributed = FrameSelection.evenlySpaced(usable, count: max(1, count / 2))
+        // Opening/closing cards often occupy several consecutive samples. Always
+        // inspect the first and last moments rather than relying solely on a
+        // broad evenly-spaced pass, which could otherwise miss a 0s/19s intro.
+        let boundaryCount = min(3, usable.count)
+        let boundaries = Array(usable.prefix(boundaryCount)) + Array(usable.suffix(boundaryCount))
+        let shotLeaders = FrameSelection.sceneRanges(in: usable).compactMap { range in
+            usable[range].max { $0.qualityScore < $1.qualityScore }
+        }
+        let distributed = FrameSelection.evenlySpaced(usable, count: max(1, count / 4))
         let visualLeaders = usable.sorted { $0.qualityScore > $1.qualityScore }
         var seen = Set<Int>()
         var candidates: [FrameDescriptor] = []
-        for candidate in distributed + visualLeaders where candidates.count < count {
+        for candidate in boundaries + shotLeaders + distributed + visualLeaders where candidates.count < count {
             if seen.insert(candidate.id).inserted {
                 candidates.append(candidate)
             }
@@ -170,28 +210,73 @@ struct VideoStoryboardAnalyzer: Sendable {
         return candidates
     }
 
-    private func peopleScore(in image: CGImage) -> Float {
+    private struct PersonSignals: Sendable {
+        var score: Float = 0
+        var faceScore: Float = 0
+        var bodyScore: Float = 0
+        var faceCount = 0
+    }
+
+    private func personSignals(in image: CGImage) -> PersonSignals {
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         let faces = VNDetectFaceRectanglesRequest()
-        guard (try? handler.perform([faces])) != nil else { return 0 }
-        let faceArea = (faces.results ?? [])
+        guard (try? handler.perform([faces])) != nil else { return PersonSignals() }
+        let detectedFaces = faces.results ?? []
+        let faceArea = detectedFaces
             .map { Float($0.boundingBox.width * $0.boundingBox.height) }
             .max() ?? 0
-        let faceScore = min(1, faceArea * 10)
-        // Face detection is cheaper than the full-body request. A usable close-up
-        // needs no second Vision pass.
-        if faceScore >= 0.28 { return faceScore * 0.9 }
+        let faceScore = min(1, faceArea * 11)
 
         let bodies = VNDetectHumanRectanglesRequest()
         bodies.upperBodyOnly = false
-        guard (try? handler.perform([bodies])) != nil else { return faceScore * 0.9 }
+        guard (try? handler.perform([bodies])) != nil else {
+            return PersonSignals(score: faceScore * 0.92, faceScore: faceScore, bodyScore: 0, faceCount: detectedFaces.count)
+        }
         let bodyArea = (bodies.results ?? [])
             .map { Float($0.boundingBox.width * $0.boundingBox.height) }
             .max() ?? 0
 
-        // A clear close-up is useful, while a large human rectangle favors full-body shots.
+        // A clear close-up is useful, while a large human rectangle favors a
+        // readable pose. Multiple faces are a strong dialogue/interaction cue.
         let bodyScore = min(1, bodyArea * 4)
-        return max(faceScore * 0.9, bodyScore)
+        let interaction: Float = detectedFaces.count >= 2 ? min(0.30, Float(detectedFaces.count - 1) * 0.12) : 0
+        return PersonSignals(
+            score: min(1, max(faceScore * 0.92, bodyScore * 0.78) + interaction),
+            faceScore: faceScore,
+            bodyScore: bodyScore,
+            faceCount: detectedFaces.count
+        )
+    }
+
+    private func addingTemporalSignals(to descriptors: [FrameDescriptor]) -> [FrameDescriptor] {
+        guard descriptors.count > 1 else { return descriptors }
+        return descriptors.indices.map { index in
+            var descriptor = descriptors[index]
+            let previous = index > 0 ? FrameSelection.histogramDistance(descriptors[index - 1].histogram, descriptor.histogram) : 0
+            let next = index + 1 < descriptors.count ? FrameSelection.histogramDistance(descriptor.histogram, descriptors[index + 1].histogram) : 0
+            descriptor.motionScore = min(1, (previous + next) / 0.28)
+            // A severe discontinuity is a cut or fade; it should never be the
+            // preferred still even if its histogram happens to be high contrast.
+            descriptor.transitionScore = max(previous, next) >= 0.52 ? 1 : max(0, max(previous, next) - 0.30) / 0.22
+            return descriptor
+        }
+    }
+
+    private func textOverlayScore(in image: CGImage) -> Float {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .fast
+        request.usesLanguageCorrection = false
+        request.minimumTextHeight = 0.018
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        guard (try? handler.perform([request])) != nil else { return 0 }
+        let textRegions = (request.results ?? []).filter { !$0.topCandidates(1).isEmpty }
+        guard !textRegions.isEmpty else { return 0 }
+        let area = textRegions.reduce(Float(0)) { partial, observation in
+            partial + Float(observation.boundingBox.width * observation.boundingBox.height)
+        }
+        // One large title or several warning lines are meaningful. A normal
+        // one-line subtitle remains below the rejection threshold.
+        return min(1, area * 4 + Float(textRegions.count) * 0.10)
     }
 
     private func visionPreview(from image: CGImage) -> CGImage {
@@ -223,7 +308,14 @@ struct PixelMetrics {
     let histogram: [Float]
     let luminance: Float
     let blackRatio: Float
+    let brightRatio: Float
+    let dominantToneRatio: Float
     let sharpness: Float
+    /// Dissolves and motion trails have lots of weak edges; this tells them
+    /// apart from decisive, in-focus boundaries.
+    let focusedEdgeRatio: Float
+    /// A secondary cue for washed-out dissolves and flash frames.
+    let contrast: Float
     let fingerprint: UInt64
 
     static func make(from image: CGImage) -> PixelMetrics {
@@ -239,7 +331,17 @@ struct PixelMetrics {
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
-            return PixelMetrics(histogram: Array(repeating: 0, count: 16), luminance: 0, blackRatio: 1, sharpness: 0, fingerprint: 0)
+            return PixelMetrics(
+                histogram: Array(repeating: 0, count: 16),
+                luminance: 0,
+                blackRatio: 1,
+                brightRatio: 0,
+                dominantToneRatio: 1,
+                sharpness: 0,
+                focusedEdgeRatio: 0,
+                contrast: 0,
+                fingerprint: 0
+            )
         }
 
         context.interpolationQuality = .medium
@@ -248,6 +350,7 @@ struct PixelMetrics {
         var luminance = [Float](repeating: 0, count: size * size)
         var histogram = [Float](repeating: 0, count: 16)
         var blackPixels = 0
+        var brightPixels = 0
         var sum: Float = 0
         for pixel in 0..<(size * size) {
             let offset = pixel * 4
@@ -255,26 +358,37 @@ struct PixelMetrics {
             luminance[pixel] = value
             sum += value
             if value < 0.055 { blackPixels += 1 }
+            if value > 0.92 { brightPixels += 1 }
             histogram[min(15, Int(value * 16))] += 1
         }
         histogram = histogram.map { $0 / Float(size * size) }
 
         var edgeEnergy: Float = 0
+        var focusedEdgeEnergy: Float = 0
         for y in 1..<(size - 1) {
             for x in 1..<(size - 1) {
                 let center = luminance[y * size + x]
                 let laplacian = abs(4 * center - luminance[y * size + x - 1] - luminance[y * size + x + 1] - luminance[(y - 1) * size + x] - luminance[(y + 1) * size + x])
                 edgeEnergy += laplacian
+                if laplacian >= 0.18 { focusedEdgeEnergy += laplacian }
             }
         }
 
         let average = sum / Float(size * size)
+        let variance = luminance.reduce(Float.zero) { partial, value in
+            let delta = value - average
+            return partial + delta * delta
+        } / Float(size * size)
         let fingerprint = averageHash(luminance)
         return PixelMetrics(
             histogram: histogram,
             luminance: average,
             blackRatio: Float(blackPixels) / Float(size * size),
+            brightRatio: Float(brightPixels) / Float(size * size),
+            dominantToneRatio: histogram.max() ?? 1,
             sharpness: edgeEnergy / Float((size - 2) * (size - 2)),
+            focusedEdgeRatio: edgeEnergy > 0 ? focusedEdgeEnergy / edgeEnergy : 0,
+            contrast: sqrt(variance),
             fingerprint: fingerprint
         )
     }

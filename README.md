@@ -8,7 +8,7 @@
 
 **Smart selection first. Fine-tune any frame. Export entirely locally.**
 
-> **Latest release:** [v0.2.7 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.7) · macOS 13+ · Apple Silicon and Intel
+> **Latest release:** [v0.2.8 universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.8) · macOS 13+ · Apple Silicon and Intel
 
 ## At a glance
 
@@ -23,6 +23,8 @@
 - Keeps the source composition by default; choose 16:9, 4:3, 1:1, 3:4, 9:16, or 21:9 before creating a 3×3 to 8×8 grid.
 - Queues multiple videos and processes them in order, with live preview for each result.
 - Lets you browse another candidate set, use Smart Select, and fine-tune frames before saving again with the original output settings.
+- Redesigned the manual frame editor as a player, timeline, and candidate gallery.
+- Choose a storyboard background colour in Frame settings.
 - Supports MP4, MOV, MPEG, and other formats supported by macOS; optional timecodes and filename titles are available.
 - Exports PNG or JPG at 1920 px or wider as `video-name-shot-001.ext`, incrementing safely when needed.
 - Remembers your 中文, English, or 日本語 interface choice and supports light, dark, or system appearance.

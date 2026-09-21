@@ -8,7 +8,7 @@
 
 **先智能选帧，再手动微调；全程本地完成。**
 
-> **最新版：**[v0.2.7 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.7) · macOS 13+ · Apple Silicon 与 Intel Mac
+> **最新版：**[v0.2.8 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.8) · macOS 13+ · Apple Silicon 与 Intel Mac
 
 ## 一张图看懂功能
 
@@ -23,6 +23,8 @@
 - 默认完整保留视频构图；也可选择 16:9、4:3、1:1、3:4、9:16、21:9，再生成 3×3 至 8×8 分镜网格。
 - 可一次添加多个视频，按队列顺序处理；每个结果均有实时预览。
 - 生成后可浏览另一组候选画面，使用智能选择并按需微调，再按原结果的输出设置另存新图。
+- 手动选帧窗口重做为“播放器 + 时间线 + 候选画廊”。
+- 可在“画面”设置中选择分镜图底色。
 - 支持 MP4、MOV、MPEG 等当前 macOS 支持的格式；可选显示时间码和视频文件名标题。
 - 支持 PNG、JPG 和最低 1920 px 宽度导出，命名为 `视频名-shot-001.ext`，序号会安全递增。
 - 可记住中文、English、日本語界面选择，并支持浅色、深色或跟随设备显示模式。

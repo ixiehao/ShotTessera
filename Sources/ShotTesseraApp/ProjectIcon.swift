@@ -7,7 +7,7 @@ struct ProjectIcon: View {
     enum Symbol {
         case language, appearance, moon, disclosure, check, selector
         case grid, frame, layers, export, privacy, videoImport
-        case wand, previous, next, folder, folderCheck, save, sliders, frameSelect
+        case wand, smartSelect, refreshCandidates, previous, next, skipPrevious, skipNext, folder, folderCheck, save, sliders, frameSelect
         case film, selected, eye, filmStack, plus, trash, refresh, pause, play, ellipsis
     }
 
@@ -152,11 +152,40 @@ private struct ProjectIconPath: Shape {
             path.move(to: point(16.9, 3.4)); path.addLine(to: point(16.9, 8.2)); path.move(to: point(14.5, 5.8)); path.addLine(to: point(19.3, 5.8))
             path.move(to: point(5.2, 11.2)); path.addLine(to: point(5.2, 14.4)); path.move(to: point(3.6, 12.8)); path.addLine(to: point(6.8, 12.8))
 
+        case .smartSelect:
+            // A candidate frame with a deliberate check mark and a small sparkle.
+            // It reads as "choose the best frames", rather than a generic magic wand.
+            rounded(&path, 3.5, 5.8, 12.8, 12.8, 2.1)
+            path.move(to: point(7.8, 5.8)); path.addLine(to: point(7.8, 18.6))
+            path.move(to: point(12.2, 5.8)); path.addLine(to: point(12.2, 18.6))
+            path.move(to: point(3.5, 10.1)); path.addLine(to: point(16.3, 10.1))
+            path.move(to: point(7.0, 14.2)); path.addLine(to: point(9.0, 16.1)); path.addLine(to: point(13.5, 11.9))
+            path.move(to: point(19.2, 3.5)); path.addLine(to: point(19.2, 8.2))
+            path.move(to: point(16.9, 5.85)); path.addLine(to: point(21.5, 5.85))
+
+        case .refreshCandidates:
+            // Two compact arcs suggest cycling through a fresh candidate set.
+            path.addArc(center: point(12, 12), radius: side * 7.3 / 24, startAngle: .degrees(42), endAngle: .degrees(174), clockwise: false)
+            path.addArc(center: point(12, 12), radius: side * 7.3 / 24, startAngle: .degrees(222), endAngle: .degrees(354), clockwise: false)
+            path.move(to: point(17.0, 5.8)); path.addLine(to: point(20.0, 5.8)); path.addLine(to: point(19.3, 8.7))
+            path.move(to: point(7.0, 18.2)); path.addLine(to: point(4.0, 18.2)); path.addLine(to: point(4.7, 15.3))
+            path.addEllipse(in: area(10.5, 10.5, 3, 3))
+
         case .previous:
             path.move(to: point(14.5, 6)); path.addLine(to: point(8.5, 12)); path.addLine(to: point(14.5, 18))
 
         case .next:
             path.move(to: point(9.5, 6)); path.addLine(to: point(15.5, 12)); path.addLine(to: point(9.5, 18))
+
+        case .skipPrevious:
+            path.move(to: point(5.0, 5.4)); path.addLine(to: point(5.0, 18.6))
+            path.move(to: point(18.8, 6)); path.addLine(to: point(12.8, 12)); path.addLine(to: point(18.8, 18))
+            path.move(to: point(12.8, 6)); path.addLine(to: point(6.8, 12)); path.addLine(to: point(12.8, 18))
+
+        case .skipNext:
+            path.move(to: point(19.0, 5.4)); path.addLine(to: point(19.0, 18.6))
+            path.move(to: point(5.2, 6)); path.addLine(to: point(11.2, 12)); path.addLine(to: point(5.2, 18))
+            path.move(to: point(11.2, 6)); path.addLine(to: point(17.2, 12)); path.addLine(to: point(11.2, 18))
 
         case .folder:
             path.move(to: point(3.2, 7.8)); path.addLine(to: point(9.2, 7.8)); path.addLine(to: point(11.2, 5.3)); path.addLine(to: point(16.2, 5.3)); path.addLine(to: point(20.8, 8.1)); path.addLine(to: point(20.8, 19)); path.addLine(to: point(3.2, 19)); path.closeSubpath()

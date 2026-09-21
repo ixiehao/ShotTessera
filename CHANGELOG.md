@@ -3,6 +3,23 @@
 All notable user-facing changes are recorded here. Stable releases remain
 available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/releases).
 
+## v0.2.8
+
+### 中文
+
+- 优化手动选帧窗口：重做整体布局为“播放器 + 时间线 + 候选画廊”。
+- 在“画面”设置中增加“底色”选择。
+
+### English
+
+- Improved the manual frame-selection window with a redesigned player, timeline, and candidate gallery layout.
+- Added storyboard background-colour selection to Frame settings.
+
+### 日本語
+
+- 手動フレーム選択ウインドウを、プレーヤー、タイムライン、候補ギャラリーの構成に再設計しました。
+- 「画面」設定に絵コンテの背景色選択を追加しました。
+
 ## v0.2.7
 
 ### 中文

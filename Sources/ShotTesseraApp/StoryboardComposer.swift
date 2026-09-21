@@ -25,7 +25,15 @@ enum StoryboardComposer {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { throw StoryboardError.noExportData }
 
-        context.setFillColor(CGColor(red: 0.055, green: 0.063, blue: 0.086, alpha: 1))
+        let background = settings.background.rgb
+        context.setFillColor(
+            CGColor(
+                red: background.red,
+                green: background.green,
+                blue: background.blue,
+                alpha: 1
+            )
+        )
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
         for cellIndex in 0..<(side * side) {

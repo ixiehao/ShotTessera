@@ -1,4 +1,6 @@
 import AppKit
+import AVFoundation
+import AVKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -213,21 +215,21 @@ struct ContentView: View {
         .sheet(isPresented: $isTranscodingGuidePresented) {
             TranscodingGuide(language: language)
         }
-        .sheet(item: $manualFrameEditorRequest) { request in
-            ManualFrameEditor(
+        .background {
+            ManualFrameEditorWindowPresenter(
+                request: $manualFrameEditorRequest,
                 model: model,
-                sourceURL: request.sourceURL,
-                selectionLimit: request.selectionLimit,
-                outputWidth: request.outputWidth,
-                language: language
-            ) { frames in
-                model.applyManuallySelectedFrames(
-                    frames,
-                    targetPreviewID: request.previewID,
-                    sourceURL: request.sourceURL,
-                    duration: request.duration
-                )
-            }
+                language: language,
+                colorScheme: resolvedAppearance == .dark ? .dark : .light,
+                onApply: { request, frames in
+                    model.applyManuallySelectedFrames(
+                        frames,
+                        targetPreviewID: request.previewID,
+                        sourceURL: request.sourceURL,
+                        duration: request.duration
+                    )
+                }
+            )
         }
     }
 
@@ -537,6 +539,53 @@ struct ContentView: View {
 
     private var outputWidthChoices: [Int] { [1920, 2560, 3840, 5120, 7680, 12_000] }
 
+    private var backgroundPalette: some View {
+        HStack(spacing: 7) {
+            Text(t("export.background"))
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
+            HStack(spacing: 5) {
+                ForEach(StoryboardBackground.allCases) { background in
+                    let isSelected = model.background == background
+                    Button {
+                        model.background = background
+                    } label: {
+                        Circle()
+                            .fill(storyboardBackgroundColor(background))
+                            .frame(width: 18, height: 18)
+                            .overlay {
+                                Circle().strokeBorder(
+                                    isSelected ? Color.accentColor : Color.primary.opacity(0.22),
+                                    lineWidth: isSelected ? 3 : 1
+                                )
+                            }
+                            .shadow(
+                                color: .black.opacity(0.20),
+                                radius: isSelected ? 3 : 1,
+                                y: 1
+                            )
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.isSettingsLocked)
+                    .help(background.label(in: language))
+                    .accessibilityLabel(background.label(in: language))
+                    .accessibilityValue(isSelected ? t("accessibility.selected") : "")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(t("export.background"))
+    }
+
+    private func storyboardBackgroundColor(_ background: StoryboardBackground) -> Color {
+        let rgb = background.rgb
+        return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
+    }
+
     private func queuePanel(compact: Bool, isNarrow: Bool) -> some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 12) {
             HStack(alignment: .center, spacing: 10) {
@@ -621,6 +670,7 @@ struct ContentView: View {
                         VStack(spacing: 8) {
                             aspectSelector
                             widthSelector
+                            backgroundPalette
                             inlineToggle(t("export.time"), isOn: $model.showTimestamps)
                             inlineToggle(t("export.title"), isOn: $model.showTitleWatermark)
                         }
@@ -970,6 +1020,7 @@ final class StoryboardViewModel: ObservableObject {
     @Published var layoutAspect: StoryboardAspect = .source
     @Published var format: ExportFormat = .png
     @Published var width = 2560
+    @Published var background: StoryboardBackground = .cinema
     @Published var showTimestamps = false
     @Published var showTitleWatermark = false
     @Published var previewImage: NSImage?
@@ -1252,6 +1303,7 @@ final class StoryboardViewModel: ObservableObject {
             language: language,
             format: format,
             width: width,
+            background: background,
             showTimestamps: showTimestamps,
             showTitleWatermark: showTitleWatermark
         )
@@ -1681,15 +1733,146 @@ private final class UIStateBridge: @unchecked Sendable {
     }
 }
 
+/// Presents manual frame selection as a normal, movable and resizable macOS
+/// window. A sheet is attached to the parent window and cannot be repositioned;
+/// this small AppKit bridge keeps the editor independent without changing its
+/// SwiftUI content or selection workflow.
+private struct ManualFrameEditorWindowPresenter: NSViewRepresentable {
+    @Binding var request: ManualFrameEditorRequest?
+    @ObservedObject var model: StoryboardViewModel
+    let language: AppLanguage
+    let colorScheme: ColorScheme
+    let onApply: (ManualFrameEditorRequest, [CapturedFrame]) -> Void
+
+    func makeNSView(context: Context) -> HostView {
+        HostView()
+    }
+
+    func updateNSView(_ nsView: HostView, context: Context) {
+        nsView.update(
+            request: $request,
+            model: model,
+            language: language,
+            colorScheme: colorScheme,
+            onApply: onApply
+        )
+    }
+
+    final class HostView: NSView, NSWindowDelegate {
+        private var currentRequestID: UUID?
+        private weak var editorWindow: NSWindow?
+        private var requestBinding: Binding<ManualFrameEditorRequest?>?
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = false
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        func update(
+            request: Binding<ManualFrameEditorRequest?>,
+            model: StoryboardViewModel,
+            language: AppLanguage,
+            colorScheme: ColorScheme,
+            onApply: @escaping (ManualFrameEditorRequest, [CapturedFrame]) -> Void
+        ) {
+            requestBinding = request
+            guard let requestValue = request.wrappedValue else {
+                closeEditor()
+                return
+            }
+            guard currentRequestID != requestValue.id || editorWindow == nil else {
+                editorWindow?.appearance = Self.appKitAppearance(for: colorScheme)
+                if editorWindow?.isMiniaturized == true {
+                    editorWindow?.deminiaturize(nil)
+                }
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                editorWindow?.makeKeyAndOrderFront(nil)
+                return
+            }
+
+            closeEditor()
+            currentRequestID = requestValue.id
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1_280, height: 800),
+                styleMask: [.titled, .closable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = language.text("editor.title")
+            // This is a separate NSWindow, so it does not automatically inherit
+            // ContentView's preferredColorScheme. Set its AppKit appearance as
+            // well as the hosted SwiftUI preference to keep the entire editor—
+            // title bar, surfaces and controls—in sync with Batch Studio.
+            window.appearance = Self.appKitAppearance(for: colorScheme)
+            window.isReleasedWhenClosed = false
+            window.isMovableByWindowBackground = true
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            window.minSize = NSSize(width: 1_000, height: 680)
+            window.contentMinSize = NSSize(width: 1_000, height: 680)
+            window.maxSize = NSSize(width: 16_384, height: 16_384)
+            window.center()
+            window.delegate = self
+            window.contentView = NSHostingView(
+                rootView: ManualFrameEditor(
+                    model: model,
+                    sourceURL: requestValue.sourceURL,
+                    selectionLimit: requestValue.selectionLimit,
+                    duration: requestValue.duration,
+                    outputWidth: requestValue.outputWidth,
+                    language: language,
+                    onClose: { [weak self] in self?.closeEditor() }
+                ) { [weak self] frames in
+                    onApply(requestValue, frames)
+                    self?.closeEditor()
+                }
+                .preferredColorScheme(colorScheme)
+            )
+            editorWindow = window
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
+
+        private static func appKitAppearance(for colorScheme: ColorScheme) -> NSAppearance? {
+            NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
+        }
+
+        func windowWillClose(_ notification: Notification) {
+            currentRequestID = nil
+            editorWindow = nil
+            requestBinding?.wrappedValue = nil
+        }
+
+        fileprivate func closeEditor() {
+            guard let window = editorWindow else {
+                currentRequestID = nil
+                requestBinding?.wrappedValue = nil
+                return
+            }
+            editorWindow = nil
+            currentRequestID = nil
+            window.delegate = nil
+            window.close()
+            requestBinding?.wrappedValue = nil
+        }
+    }
+}
+
 private struct ManualFrameEditor: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var model: StoryboardViewModel
     let sourceURL: URL
     let selectionLimit: Int
+    let duration: Double
     let outputWidth: Int
     let language: AppLanguage
+    let onClose: () -> Void
     let onApply: ([CapturedFrame]) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var candidates: [CapturedFrame] = []
+    @State private var sampledCandidates: [CapturedFrame] = []
+    @State private var manuallyAddedCandidates: [CapturedFrame] = []
     @State private var selectedIDs = Set<Int>()
     @State private var candidateBatch = 0
     @State private var isLoadingCandidates = false
@@ -1700,6 +1883,17 @@ private struct ManualFrameEditor: View {
     @State private var candidatePresentationTask: Task<Void, Never>?
     @State private var smartSelectionTask: Task<[Int], Never>?
     @State private var smartSelectionPresentationTask: Task<Void, Never>?
+    @State private var previewTime = 0.0
+    @State private var previewTimeText = "00:00:00.000"
+    @State private var previewFrame: CapturedFrame?
+    @State private var isLoadingPreviewFrame = false
+    @State private var isRefiningCurrentFrame = false
+    @State private var isRefiningSelectedFrames = false
+    @State private var previewCaptureTask: Task<Void, Never>?
+    @State private var player: AVPlayer?
+    @State private var isScrubbingPreview = false
+    @State private var nextManualFrameID = 1_000_000
+    @State private var previewFrameStep = 1.0 / 30.0
 
     private func t(_ key: String, _ arguments: CVarArg...) -> String {
         language.text(key, arguments: arguments)
@@ -1711,132 +1905,187 @@ private struct ManualFrameEditor: View {
             .sorted { $0.time < $1.time }
     }
 
+    private var candidates: [CapturedFrame] {
+        (sampledCandidates + manuallyAddedCandidates).sorted { $0.time < $1.time }
+    }
+
+    private var safeDuration: Double { max(0.01, duration) }
+
+    private var controlBorder: Color {
+        colorScheme == .dark ? .white.opacity(0.24) : .black.opacity(0.14)
+    }
+
+    private var controlText: Color {
+        colorScheme == .dark ? .white.opacity(0.88) : Color(red: 0.10, green: 0.19, blue: 0.32)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(t("editor.title"))
-                    .font(.system(size: 21, weight: .bold, design: .rounded))
-                Text(t("editor.detail"))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
+        VStack(spacing: 0) {
+            editorToolbar
+            Divider()
+            manualVideoPreview
+            Divider()
+            candidateBrowser
+            Divider()
+            editorFooter
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(
+            minWidth: 1_000,
+            idealWidth: 1_280,
+            maxWidth: .infinity,
+            minHeight: 680,
+            idealHeight: 800,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
+        .accessibilityIdentifier("manual-frame-editor")
+        .onAppear {
+            loadCandidates()
+            prepareVideoPreview()
+        }
+        .onDisappear(perform: cancelBackgroundWork)
+    }
 
-            HStack {
-                GlyphLabel(title: t("editor.selectionCount", selectedIDs.count, selectionLimit), glyph: .selected)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(selectedIDs.count == selectionLimit ? .green : .secondary)
-                Spacer()
-                Button(action: smartSelectCandidates) {
+    private var editorToolbar: some View {
+        HStack(spacing: 8) {
+            GlyphLabel(title: t("editor.selectionCount", selectedIDs.count, selectionLimit), glyph: .layers, glyphSize: 18)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(selectedIDs.count == selectionLimit ? Color.green : controlText)
+
+            Spacer(minLength: 16)
+
+            Button(action: smartSelectCandidates) {
+                Group {
                     if isSmartSelecting {
-                        ProgressView()
-                            .controlSize(.small)
+                        ProgressView().controlSize(.small)
                     } else {
-                        GlyphLabel(title: t("editor.smartSelect"), glyph: .wand)
-                            .font(.system(size: 15, weight: .bold))
+                        GlyphLabel(title: t("editor.smartSelect"), glyph: .smartSelect, glyphSize: 16)
+                            .font(.system(size: 14, weight: .semibold))
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(Color(red: 0.18, green: 0.54, blue: 0.78))
-                .frame(minWidth: 150, minHeight: 42)
-                .disabled(isLoadingCandidates || candidates.isEmpty || isSmartSelecting)
-                .accessibilityIdentifier("manual-frame-smart-select")
-                Button(action: regenerateCandidates) {
-                    GlyphLabel(title: t("editor.regenerate"), glyph: .refresh)
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .frame(minWidth: 154, minHeight: 42)
-                .disabled(isLoadingCandidates || isSmartSelecting)
-                .accessibilityIdentifier("manual-frame-regenerate")
+                .frame(width: 136, height: 36)
             }
+            .buttonStyle(ManualFrameEditorActionButtonStyle(role: .smartSelect))
+            .disabled(isLoadingCandidates || candidates.isEmpty || isSmartSelecting)
+            .accessibilityIdentifier("manual-frame-smart-select")
 
-            ScrollView {
-                if isLoadingCandidates {
-                    ProgressView(t("editor.loading"))
-                        .frame(maxWidth: .infinity, minHeight: 360)
-                } else if candidates.isEmpty {
-                    VStack(spacing: 8) {
-                        ProjectIcon(symbol: .film, size: 28)
-                            .foregroundStyle(.secondary)
-                        Text(captureError.isEmpty ? t("editor.noPreview") : captureError)
-                            .font(.system(size: 12))
-                            .foregroundStyle(captureError.isEmpty ? Color.secondary : Color.red)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 360)
-                } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 116), spacing: 8)], spacing: 8) {
-                        ForEach(candidates) { candidate in
-                            Button {
-                                toggle(candidate)
-                            } label: {
-                                frameImage(candidate)
-                                    .frame(height: 88)
-                                    .overlay(alignment: .bottomLeading) {
-                                        Text(TimestampFormatter.string(for: candidate.time))
-                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 3)
-                                            .foregroundStyle(.white)
-                                            .background(.black.opacity(0.65), in: Capsule())
-                                            .padding(5)
-                                    }
-                                    .overlay(alignment: .topTrailing) {
-                                        if selectedIDs.contains(candidate.id) {
-                                            ProjectIcon(symbol: .selected, size: 20)
-                                                .foregroundStyle(Color(red: 0.34, green: 0.84, blue: 0.92))
-                                                .shadow(color: .black.opacity(0.38), radius: 3)
-                                                .padding(5)
-                                        }
-                                    }
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .strokeBorder(
-                                                selectedIDs.contains(candidate.id)
-                                                    ? Color(red: 0.34, green: 0.84, blue: 0.92)
-                                                    : .white.opacity(0.10),
-                                                lineWidth: selectedIDs.contains(candidate.id) ? 3 : 1
-                                            )
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!selectedIDs.contains(candidate.id) && selectedIDs.count >= selectionLimit)
-                        }
-                    }
-                }
+            Button(action: regenerateCandidates) {
+                GlyphLabel(title: t("editor.regenerate"), glyph: .refreshCandidates, glyphSize: 16)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 148, height: 36)
             }
-            .frame(minHeight: 340, maxHeight: 450)
-            .accessibilityIdentifier("manual-frame-candidates")
+            .buttonStyle(ManualFrameEditorActionButtonStyle(role: .regenerate))
+            .disabled(isLoadingCandidates || isSmartSelecting)
+            .accessibilityIdentifier("manual-frame-regenerate")
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 60)
+    }
 
-            HStack {
-                Button(role: .cancel) { dismiss() } label: {
-                    Text(t("editor.cancel"))
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(minWidth: 86, minHeight: 42)
+    private var candidateBrowser: some View {
+        ScrollView {
+            if isLoadingCandidates {
+                ProgressView(t("editor.loading"))
+                    .frame(maxWidth: .infinity, minHeight: 260)
+            } else if candidates.isEmpty {
+                VStack(spacing: 8) {
+                    ProjectIcon(symbol: .film, size: 28)
+                        .foregroundStyle(.secondary)
+                    Text(captureError.isEmpty ? t("editor.noPreview") : captureError)
+                        .font(.system(size: 12))
+                        .foregroundStyle(captureError.isEmpty ? Color.secondary : Color.red)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                Spacer()
-                Button {
-                    onApply(selectedFrames)
-                    dismiss()
-                } label: {
-                    GlyphLabel(title: t("editor.apply"), glyph: .check)
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(minWidth: 166, minHeight: 42)
+                .frame(maxWidth: .infinity, minHeight: 260)
+            } else {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 250, maximum: 320), spacing: 12)],
+                    spacing: 12
+                ) {
+                    ForEach(candidates) { candidate in
+                        candidateTile(candidate)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(selectedIDs.count != selectionLimit || model.isApplyingFrameAdjustments)
-                .accessibilityIdentifier("manual-frame-apply")
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
             }
         }
-        .padding(24)
-        .frame(minWidth: 820, minHeight: 610)
-        .accessibilityIdentifier("manual-frame-editor")
-        .onAppear { loadCandidates() }
-        .onDisappear(perform: cancelBackgroundWork)
+        .frame(minHeight: 220, maxHeight: .infinity)
+        .layoutPriority(1)
+        .accessibilityIdentifier("manual-frame-candidates")
+    }
+
+    private func candidateTile(_ candidate: CapturedFrame) -> some View {
+        let isSelected = selectedIDs.contains(candidate.id)
+        return Button {
+            toggle(candidate)
+        } label: {
+            frameImage(candidate)
+                .aspectRatio(candidate.aspectRatio, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .overlay(alignment: .bottomLeading) {
+                    Text(TimestampFormatter.string(for: candidate.time))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .foregroundStyle(.white)
+                        .background(.black.opacity(0.72), in: Capsule())
+                        .padding(7)
+                }
+                .overlay(alignment: .topLeading) {
+                    ZStack {
+                        Circle()
+                            .fill(isSelected ? Color(red: 0.04, green: 0.48, blue: 1.00) : .black.opacity(0.28))
+                        Circle().strokeBorder(.white.opacity(0.90), lineWidth: 1.5)
+                        if isSelected {
+                            ProjectIcon(symbol: .check, size: 13)
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(width: 23, height: 23)
+                    .padding(8)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(
+                            isSelected ? Color(red: 0.04, green: 0.48, blue: 1.00) : controlBorder,
+                            lineWidth: isSelected ? 3 : 1
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(!isSelected && selectedIDs.count >= selectionLimit)
+    }
+
+    private var editorFooter: some View {
+        HStack {
+            Button(role: .cancel, action: onClose) {
+                Text(t("editor.cancel"))
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 132, height: 36)
+            }
+            .buttonStyle(ManualFrameEditorActionButtonStyle(role: .regenerate))
+
+            Spacer()
+
+            Button(action: applySelectedFrames) {
+                Group {
+                    if isRefiningSelectedFrames {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        GlyphLabel(title: t("editor.apply"), glyph: .check)
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                }
+                .frame(width: 164, height: 36)
+            }
+            .buttonStyle(ManualFrameEditorActionButtonStyle(role: .smartSelect))
+            .disabled(selectedIDs.count != selectionLimit || model.isApplyingFrameAdjustments || isRefiningSelectedFrames)
+            .accessibilityIdentifier("manual-frame-apply")
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 56)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.96))
     }
 
     @ViewBuilder
@@ -1844,13 +2093,447 @@ private struct ManualFrameEditor: View {
         if let image = NSImage(data: frame.jpegData) {
             Image(nsImage: image)
                 .resizable()
-                .scaledToFill()
-                .aspectRatio(frame.aspectRatio, contentMode: .fit)
+                .scaledToFit()
+                .padding(2)
+                .background(.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         } else {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(.quaternary)
                 .aspectRatio(frame.aspectRatio, contentMode: .fit)
+        }
+    }
+
+    private var manualVideoPreview: some View {
+        GeometryReader { proxy in
+            let monitorWidth = min(max(proxy.size.width * 0.43, 360), 560)
+            HStack(alignment: .top, spacing: 16) {
+                previewMonitor
+                    .frame(width: monitorWidth, height: 248)
+                timelineControlDeck
+                    .frame(maxWidth: .infinity, minHeight: 248, maxHeight: 248)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .frame(height: 272)
+    }
+
+    private var previewMonitor: some View {
+        ZStack(alignment: .bottom) {
+            ManualVideoPlayerView(player: player)
+
+            // A decoded still remains on top while scrubbing has stopped: it is
+            // substantially clearer than the player surface for fast movement.
+            if let previewFrame, !isScrubbingPreview {
+                previewStill(previewFrame)
+            } else if isLoadingPreviewFrame {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
+            }
+
+            HStack(spacing: 10) {
+                ProjectIcon(symbol: .play, size: 16)
+                    .foregroundStyle(.white)
+                Text("\(TimestampFormatter.string(for: previewTime))  /  \(TimestampFormatter.string(for: safeDuration))")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white)
+                Spacer(minLength: 0)
+                ProjectIcon(symbol: .frame, size: 16)
+                    .foregroundStyle(.white.opacity(0.90))
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 42)
+            .background(.black.opacity(0.54))
+        }
+        .background(Color(red: 0.06, green: 0.07, blue: 0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private func previewStill(_ frame: CapturedFrame) -> some View {
+        if let image = NSImage(data: frame.jpegData) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+        }
+    }
+
+    private var timelineControlDeck: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // This is intentionally its own card. It follows the reference
+            // player layout: a compact timeline above one aligned control row.
+            VStack(alignment: .leading, spacing: 0) {
+                Text(t("editor.timelineHint"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(controlText)
+                    .lineLimit(1)
+
+                timelineFilmstrip
+                    .padding(.top, 10)
+
+                Slider(value: $previewTime, in: 0...safeDuration, onEditingChanged: finishPreviewScrub)
+                    .tint(Color(red: 0.04, green: 0.48, blue: 1.00))
+                    .padding(.top, 7)
+                    .onChange(of: previewTime) { time in
+                        if isScrubbingPreview {
+                            scrubVideoPreview(to: time)
+                        } else {
+                            seekVideoPreview(to: time)
+                        }
+                    }
+                    .accessibilityIdentifier("manual-frame-timeline")
+
+                HStack {
+                    Text(TimestampFormatter.string(for: 0))
+                    Spacer()
+                    Text(TimestampFormatter.string(for: safeDuration))
+                }
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+            }
+            .padding(12)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(controlBorder, lineWidth: 1)
+            }
+
+            HStack(spacing: 10) {
+                frameNudgeControls
+
+                TextField("00:00:00.000", text: $previewTimeText)
+                    .textFieldStyle(ManualFrameEditorTextFieldStyle())
+                    .frame(minWidth: 220, maxWidth: .infinity)
+                    .onChange(of: previewTimeText, perform: updateTimelineFromCompleteTimeText)
+                    .onSubmit(applyEditablePreviewTime)
+                    .accessibilityIdentifier("manual-frame-time-field")
+                    .accessibilityLabel(t("editor.timeField"))
+
+                Button(action: addCurrentFrame) {
+                    GlyphLabel(title: t("editor.addCurrentFrame"), glyph: .plus, glyphSize: 16)
+                        .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+                        .frame(width: 286, height: 36)
+                }
+                .buttonStyle(ManualFrameEditorActionButtonStyle(role: .smartSelect))
+                .disabled(previewFrame == nil || isLoadingPreviewFrame || isRefiningCurrentFrame)
+                .accessibilityIdentifier("manual-frame-add-current")
+            }
+            .frame(height: 36)
+        }
+    }
+
+    private var timelineFilmstrip: some View {
+        let frames = timelineFrames
+        return GeometryReader { proxy in
+            if frames.isEmpty {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.black.opacity(0.06))
+            } else {
+                let frameWidth = max(1, (proxy.size.width - CGFloat(max(0, frames.count - 1))) / CGFloat(frames.count))
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 1) {
+                        ForEach(frames) { frame in
+                            filmstripImage(frame)
+                                .frame(width: frameWidth, height: 52)
+                                .clipped()
+                        }
+                    }
+
+                    Rectangle()
+                        .fill(Color.accentColor.opacity(0.92))
+                        .frame(width: 2, height: 52)
+                        .shadow(color: .white.opacity(0.70), radius: 1)
+                        .offset(x: timelinePlayheadOffset(in: proxy.size.width))
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+        .frame(height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .strokeBorder(controlBorder, lineWidth: 1)
+        }
+    }
+
+    /// Candidate ordering can change when a user manually adds a frame. The
+    /// filmstrip must instead remain a truthful 0-to-duration map, so it takes
+    /// evenly distributed samples from the original time-sorted candidate set.
+    private var timelineFrames: [CapturedFrame] {
+        let source = sampledCandidates.sorted { $0.time < $1.time }
+        let displayCount = min(12, source.count)
+        guard displayCount > 0, source.count > displayCount else { return source }
+
+        return (0..<displayCount).map { position in
+            let sourceIndex = min(
+                source.count - 1,
+                Int((Double(position) + 0.5) * Double(source.count) / Double(displayCount))
+            )
+            return source[sourceIndex]
+        }
+    }
+
+    /// SwiftUI's macOS slider reserves a thumb-radius at both ends of its
+    /// drawing track. Use the same effective range for the filmstrip marker;
+    /// otherwise the marker drifts to the right of the slider thumb near the
+    /// end of a video.
+    private func timelinePlayheadOffset(in width: CGFloat) -> CGFloat {
+        let markerWidth: CGFloat = 2
+        let thumbInset: CGFloat = 14
+        let progress = max(0, min(1, previewTime / safeDuration))
+        let usableWidth = max(0, width - markerWidth - thumbInset * 2)
+        return thumbInset + usableWidth * progress
+    }
+
+    @ViewBuilder
+    private func filmstripImage(_ frame: CapturedFrame) -> some View {
+        if let image = NSImage(data: frame.jpegData) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            Color.black.opacity(0.08)
+        }
+    }
+
+    private var frameNudgeControls: some View {
+        HStack(spacing: 8) {
+            frameNudgeButton(
+                symbol: .skipPrevious,
+                label: t("editor.backTenFrames"),
+                offset: -10 * previewFrameStep
+            )
+            frameNudgeButton(
+                symbol: .previous,
+                label: t("editor.previousFrame"),
+                offset: -previewFrameStep
+            )
+            frameNudgeButton(
+                symbol: .next,
+                label: t("editor.nextFrame"),
+                offset: previewFrameStep
+            )
+            frameNudgeButton(
+                symbol: .skipNext,
+                label: t("editor.forwardTenFrames"),
+                offset: 10 * previewFrameStep
+            )
+        }
+    }
+
+    private func frameNudgeButton(
+        symbol: ProjectIcon.Symbol,
+        label: String,
+        offset: Double
+    ) -> some View {
+        Button {
+            nudgePreview(by: offset)
+        } label: {
+            ProjectIcon(symbol: symbol, size: 16)
+                .frame(width: 36, height: 36)
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(controlText)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(controlBorder, lineWidth: 1)
+        }
+        .disabled((offset < 0 && previewTime <= 0.000_01) || (offset > 0 && previewTime >= safeDuration - 0.000_01))
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    private func prepareVideoPreview() {
+        guard player == nil else { return }
+        let newPlayer = AVPlayer(url: sourceURL)
+        newPlayer.actionAtItemEnd = .pause
+        player = newPlayer
+        loadPreviewFrameStep()
+        seekVideoPreview(to: 0)
+    }
+
+    private func loadPreviewFrameStep() {
+        let source = sourceURL
+        Task {
+            let asset = AVURLAsset(url: source)
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+                  let nominalRate = try? await track.load(.nominalFrameRate),
+                  nominalRate.isFinite, nominalRate > 1 else { return }
+            previewFrameStep = 1.0 / Double(nominalRate)
+        }
+    }
+
+    private func nudgePreview(by offset: Double) {
+        let target = min(max(0, previewTime + offset), safeDuration)
+        if abs(target - previewTime) < 0.000_01 { return }
+        previewTime = target
+    }
+
+    private func seekVideoPreview(to time: Double) {
+        let clampedTime = min(max(0, time), safeDuration)
+        previewTimeText = TimestampFormatter.editableString(for: clampedTime)
+        isScrubbingPreview = false
+        player?.pause()
+        player?.seek(to: CMTime(seconds: clampedTime, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        requestPreviewFrame(at: clampedTime)
+    }
+
+    /// While the thumb moves, let AVFoundation use a nearby decodable frame.
+    /// The expensive exact still-image decode is deferred until release.
+    private func scrubVideoPreview(to time: Double) {
+        let clampedTime = min(max(0, time), safeDuration)
+        previewTimeText = TimestampFormatter.editableString(for: clampedTime)
+        previewCaptureTask?.cancel()
+        isLoadingPreviewFrame = false
+        player?.pause()
+        let tolerance = CMTime(seconds: 0.16, preferredTimescale: 600)
+        player?.seek(
+            to: CMTime(seconds: clampedTime, preferredTimescale: 600),
+            toleranceBefore: tolerance,
+            toleranceAfter: tolerance
+        )
+    }
+
+    private func finishPreviewScrub(_ isEditing: Bool) {
+        if isEditing {
+            isScrubbingPreview = true
+            previewCaptureTask?.cancel()
+        } else {
+            guard isScrubbingPreview else { return }
+            isScrubbingPreview = false
+            // One exact seek and one still decode after the drag—not dozens.
+            seekVideoPreview(to: previewTime)
+        }
+    }
+
+    private func applyEditablePreviewTime() {
+        guard let requestedTime = TimestampFormatter.editableSeconds(from: previewTimeText) else {
+            previewTimeText = TimestampFormatter.editableString(for: previewTime)
+            return
+        }
+        let clampedTime = min(max(0, requestedTime), safeDuration)
+        if abs(previewTime - clampedTime) < 0.000_5 {
+            seekVideoPreview(to: clampedTime)
+        } else {
+            // The slider's onChange then seeks the player and refreshes the
+            // canonical text value, keeping both controls in lockstep.
+            previewTime = clampedTime
+        }
+    }
+
+    private func updateTimelineFromCompleteTimeText(_ text: String) {
+        // Ignore the canonical value written by the slider itself. Partial text
+        // edits are intentionally left alone until they form HH:MM:SS.mmm.
+        guard text != TimestampFormatter.editableString(for: previewTime),
+              let requestedTime = TimestampFormatter.editableSeconds(from: text),
+              isCompleteTimestamp(text) else { return }
+        previewTime = min(max(0, requestedTime), safeDuration)
+    }
+
+    private func isCompleteTimestamp(_ text: String) -> Bool {
+        text.range(
+            of: #"^\d{2}:\d{2}:\d{2}\.\d{3}$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    private func requestPreviewFrame(at time: Double) {
+        previewCaptureTask?.cancel()
+        let identifier = nextManualFrameID
+        nextManualFrameID += 1
+        isLoadingPreviewFrame = true
+        let source = sourceURL
+        let capture = Task.detached(priority: .userInitiated) {
+            try await ManualFrameExtractor.captureFrame(from: source, at: time, identifier: identifier)
+        }
+        previewCaptureTask = Task {
+            do {
+                let frame = try await capture.value
+                guard !Task.isCancelled else { return }
+                previewFrame = frame
+            } catch {
+                guard !Task.isCancelled else { return }
+                previewFrame = nil
+            }
+            guard !Task.isCancelled else { return }
+            isLoadingPreviewFrame = false
+        }
+    }
+
+    private func addCurrentFrame() {
+        guard let previewFrame else { return }
+        let requestedTime = previewFrame.time
+        let identifier = previewFrame.id
+        let source = sourceURL
+        let editorDuration = duration
+        isRefiningCurrentFrame = true
+        let refinement = Task.detached(priority: .userInitiated) {
+            let asset = AVURLAsset(url: source)
+            return try await ManualFrameExtractor.captureSharpestFrame(
+                from: asset,
+                duration: editorDuration,
+                at: requestedTime,
+                identifier: identifier,
+                maximumEdge: 1_600,
+                compressionQuality: 0.92
+            )
+        }
+        Task {
+            defer { isRefiningCurrentFrame = false }
+            // If refinement fails for an unusual codec, preserving the exact
+            // preview still lets the user finish the manual edit.
+            let refined = (try? await refinement.value) ?? previewFrame
+            let isAlreadyPresent = candidates.contains { abs($0.time - refined.time) < 0.04 }
+            guard !isAlreadyPresent else { return }
+            manuallyAddedCandidates.append(refined)
+        }
+    }
+
+    private func applySelectedFrames() {
+        let framesToApply = selectedFrames
+        guard framesToApply.count == selectionLimit, !isRefiningSelectedFrames else { return }
+        let source = sourceURL
+        let editorDuration = duration
+        let gridSide = max(1, Int(Double(selectionLimit).squareRoot().rounded()))
+        let estimatedCellWidth = Double(max(1_920, outputWidth)) / Double(gridSide)
+        let maximumEdge = CGFloat(min(1_280, max(480, estimatedCellWidth * 1.15)))
+        isRefiningSelectedFrames = true
+
+        let refinement = Task.detached(priority: .userInitiated) {
+            let asset = AVURLAsset(url: source)
+            var refinedFrames: [CapturedFrame] = []
+            refinedFrames.reserveCapacity(framesToApply.count)
+            for frame in framesToApply {
+                try Task.checkCancellation()
+                let refined = (try? await ManualFrameExtractor.captureSharpestFrame(
+                    from: asset,
+                    duration: editorDuration,
+                    at: frame.time,
+                    identifier: frame.id,
+                    maximumEdge: maximumEdge,
+                    compressionQuality: 0.92
+                )) ?? frame
+                refinedFrames.append(refined)
+            }
+            return refinedFrames
+        }
+        Task {
+            defer { isRefiningSelectedFrames = false }
+            guard let refinedFrames = try? await refinement.value else { return }
+            onApply(refinedFrames)
+            onClose()
         }
     }
 
@@ -1921,7 +2604,7 @@ private struct ManualFrameEditor: View {
             do {
                 let frames = try await samplingTask.value
                 guard !Task.isCancelled, token == captureToken else { return }
-                candidates = frames
+                sampledCandidates = frames
             } catch {
                 guard !Task.isCancelled, token == captureToken else { return }
                 captureError = (error as? StoryboardError)?.message(in: language) ?? error.localizedDescription
@@ -1939,6 +2622,29 @@ private struct ManualFrameEditor: View {
         candidatePresentationTask?.cancel()
         smartSelectionTask?.cancel()
         smartSelectionPresentationTask?.cancel()
+        previewCaptureTask?.cancel()
+        player?.pause()
+    }
+}
+
+/// AppKit's AVPlayerView keeps the preview lifecycle stable inside a SwiftUI
+/// sheet. The editor supplies its own timeline, so native transport controls
+/// are intentionally hidden.
+private struct ManualVideoPlayerView: NSViewRepresentable {
+    let player: AVPlayer?
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .none
+        view.videoGravity = .resizeAspect
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ view: AVPlayerView, context: Context) {
+        if view.player !== player {
+            view.player = player
+        }
     }
 }
 
@@ -2551,5 +3257,76 @@ private struct ManualAdjustmentButtonStyle: ButtonStyle {
             .overlay { Capsule().strokeBorder(Color(red: 0.42, green: 0.84, blue: 0.96).opacity(0.72)) }
             .shadow(color: Color(red: 0.25, green: 0.68, blue: 0.91).opacity(configuration.isPressed ? 0.08 : 0.18), radius: 8, y: 3)
             .opacity(configuration.isPressed ? 0.80 : 1)
+    }
+}
+
+/// Purpose-built action controls for the manual candidate editor.  These are
+/// intentionally separate from the global button styles: one commits an
+/// intelligent selection, while the other safely asks for a new candidate set.
+private struct ManualFrameEditorTextFieldStyle: TextFieldStyle {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration
+            .textFieldStyle(.plain)
+            .font(.system(size: 13, weight: .medium, design: .monospaced))
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(.trailing)
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(
+                Color(nsColor: .controlBackgroundColor),
+                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(
+                        colorScheme == .dark ? .white.opacity(0.24) : .black.opacity(0.14),
+                        lineWidth: 1
+                    )
+            }
+    }
+}
+
+private struct ManualFrameEditorActionButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var colorScheme
+    enum Role {
+        case smartSelect
+        case regenerate
+    }
+
+    let role: Role
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        let pressedOpacity = configuration.isPressed ? 0.80 : 1.0
+
+        switch role {
+        case .smartSelect:
+            configuration.label
+                .foregroundStyle(Color.white)
+                .background(
+                    Color(red: 0.04, green: 0.48, blue: 1.00),
+                    in: shape
+                )
+                .overlay {
+                    shape.strokeBorder(Color.white.opacity(0.34), lineWidth: 1)
+                }
+                .opacity(pressedOpacity)
+
+        case .regenerate:
+            configuration.label
+                .foregroundStyle(.primary)
+                .background(
+                    Color(nsColor: .controlBackgroundColor),
+                    in: shape
+                )
+                .overlay {
+                    shape.strokeBorder(
+                        colorScheme == .dark ? .white.opacity(0.24) : .black.opacity(0.14),
+                        lineWidth: 1
+                    )
+                }
+                .opacity(pressedOpacity)
+        }
     }
 }
