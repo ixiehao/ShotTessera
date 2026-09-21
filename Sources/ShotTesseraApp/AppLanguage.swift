@@ -49,6 +49,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "editor.cancel", "editor.selectionCount", "editor.smartSelect", "editor.regenerate", "editor.videoPreview",
         "editor.videoPreviewDetail", "editor.playPreview", "editor.pausePreview", "editor.addCurrentFrame", "editor.candidates",
         "editor.timeField", "editor.backTenFrames", "editor.previousFrame", "editor.nextFrame", "editor.forwardTenFrames",
+        "editor.backFiveFrames", "editor.backOneFrame", "editor.forwardOneFrame", "editor.forwardFiveFrames",
         "failureReport.title", "failureReport.detail", "failureReport.unknown", "failureReport.transcoding.badge",
         "failureReport.showSources", "failureReport.transcodingGuide", "transcoding.title", "transcoding.intro",
         "transcoding.step.one", "transcoding.step.two", "transcoding.step.three", "transcoding.tip"

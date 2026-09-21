@@ -152,6 +152,10 @@
 "editor.previousFrame" = "前のコマ";
 "editor.nextFrame" = "次のコマ";
 "editor.forwardTenFrames" = "10 コマ進む";
+"editor.backFiveFrames" = "-5コマ";
+"editor.backOneFrame" = "-1コマ";
+"editor.forwardOneFrame" = "+1コマ";
+"editor.forwardFiveFrames" = "+5コマ";
 "failureReport.title" = "処理に失敗した動画";
 "failureReport.detail" = "%d 本の動画は変換が必要です。他の動画は続行済みです。";
 "failureReport.unknown" = "具体的な理由はありません。";

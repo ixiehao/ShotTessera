@@ -152,6 +152,10 @@
 "editor.previousFrame" = "后退 1 帧";
 "editor.nextFrame" = "前进 1 帧";
 "editor.forwardTenFrames" = "前进 10 帧";
+"editor.backFiveFrames" = "-5帧";
+"editor.backOneFrame" = "-1帧";
+"editor.forwardOneFrame" = "+1帧";
+"editor.forwardFiveFrames" = "+5帧";
 "failureReport.title" = "失败项目";
 "failureReport.detail" = "%d 部影片需要转码；其他影片已继续处理。";
 "failureReport.unknown" = "未提供具体原因。";

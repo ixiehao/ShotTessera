@@ -1491,8 +1491,17 @@ final class StoryboardViewModel: ObservableObject {
             sourceURL: sourceURL,
             duration: duration
         )
-        var settings = target.settings
-        settings.language = language
+        let settings = ExportSettings(
+            gridSide: target.settings.gridSide,
+            layoutAspect: target.settings.layoutAspect,
+            language: language,
+            format: target.settings.format,
+            width: target.settings.width,
+            background: target.settings.background,
+            showTimestamps: target.settings.showTimestamps,
+            showTitleWatermark: target.settings.showTitleWatermark
+        )
+        let settingsLanguage = settings.language
         isApplyingFrameAdjustments = true
         let bridge = UIStateBridge(model: self)
 
@@ -1507,7 +1516,7 @@ final class StoryboardViewModel: ObservableObject {
                 )
             } catch {
                 await bridge.failEditedFrames(
-                    message: (error as? StoryboardError)?.message(in: settings.language) ?? error.localizedDescription
+                    message: (error as? StoryboardError)?.message(in: settingsLanguage) ?? error.localizedDescription
                 )
             }
         }
@@ -1910,6 +1919,7 @@ private struct ManualFrameEditor: View {
     }
 
     private var safeDuration: Double { max(0.01, duration) }
+    private let manualPreviewHeight: CGFloat = 208
 
     private var controlBorder: Color {
         colorScheme == .dark ? .white.opacity(0.24) : .black.opacity(0.14)
@@ -2017,6 +2027,9 @@ private struct ManualFrameEditor: View {
 
     private func candidateTile(_ candidate: CapturedFrame) -> some View {
         let isSelected = selectedIDs.contains(candidate.id)
+        // The badge is the final storyboard position, so a newly selected
+        // earlier frame immediately renumbers every later selected frame.
+        let selectionNumber = selectedFrames.firstIndex(where: { $0.id == candidate.id }).map { $0 + 1 }
         return Button {
             toggle(candidate)
         } label: {
@@ -2037,8 +2050,10 @@ private struct ManualFrameEditor: View {
                         Circle()
                             .fill(isSelected ? Color(red: 0.04, green: 0.48, blue: 1.00) : .black.opacity(0.28))
                         Circle().strokeBorder(.white.opacity(0.90), lineWidth: 1.5)
-                        if isSelected {
-                            ProjectIcon(symbol: .check, size: 13)
+                        if let selectionNumber {
+                            Text("\(selectionNumber)")
+                                .font(.system(size: selectionNumber >= 10 ? 10 : 12, weight: .bold, design: .rounded))
+                                .monospacedDigit()
                                 .foregroundStyle(.white)
                         }
                     }
@@ -2106,17 +2121,17 @@ private struct ManualFrameEditor: View {
 
     private var manualVideoPreview: some View {
         GeometryReader { proxy in
-            let monitorWidth = min(max(proxy.size.width * 0.43, 360), 560)
+            let monitorWidth = min(max(proxy.size.width * 0.38, 320), 500)
             HStack(alignment: .top, spacing: 16) {
                 previewMonitor
-                    .frame(width: monitorWidth, height: 248)
+                    .frame(width: monitorWidth, height: manualPreviewHeight)
                 timelineControlDeck
-                    .frame(maxWidth: .infinity, minHeight: 248, maxHeight: 248)
+                    .frame(maxWidth: .infinity, minHeight: manualPreviewHeight, maxHeight: manualPreviewHeight)
             }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .frame(height: 272)
+        .frame(height: manualPreviewHeight + 24)
     }
 
     private var previewMonitor: some View {
@@ -2207,22 +2222,38 @@ private struct ManualFrameEditor: View {
                     .strokeBorder(controlBorder, lineWidth: 1)
             }
 
-            HStack(spacing: 10) {
-                frameNudgeControls
+            HStack(spacing: 8) {
+                frameNudgeButton(
+                    label: t("editor.backFiveFrames"),
+                    offset: -5 * previewFrameStep
+                )
+                frameNudgeButton(
+                    label: t("editor.backOneFrame"),
+                    offset: -previewFrameStep
+                )
 
                 TextField("00:00:00.000", text: $previewTimeText)
                     .textFieldStyle(ManualFrameEditorTextFieldStyle())
-                    .frame(minWidth: 220, maxWidth: .infinity)
+                    .frame(minWidth: 176, maxWidth: .infinity)
                     .onChange(of: previewTimeText, perform: updateTimelineFromCompleteTimeText)
                     .onSubmit(applyEditablePreviewTime)
                     .accessibilityIdentifier("manual-frame-time-field")
                     .accessibilityLabel(t("editor.timeField"))
 
+                frameNudgeButton(
+                    label: t("editor.forwardOneFrame"),
+                    offset: previewFrameStep
+                )
+                frameNudgeButton(
+                    label: t("editor.forwardFiveFrames"),
+                    offset: 5 * previewFrameStep
+                )
+
                 Button(action: addCurrentFrame) {
                     GlyphLabel(title: t("editor.addCurrentFrame"), glyph: .plus, glyphSize: 16)
                         .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
-                        .frame(width: 286, height: 36)
+                        .frame(width: 230, height: 36)
                 }
                 .buttonStyle(ManualFrameEditorActionButtonStyle(role: .smartSelect))
                 .disabled(previewFrame == nil || isLoadingPreviewFrame || isRefiningCurrentFrame)
@@ -2274,13 +2305,16 @@ private struct ManualFrameEditor: View {
         let displayCount = min(12, source.count)
         guard displayCount > 0, source.count > displayCount else { return source }
 
-        return (0..<displayCount).map { position in
+        var evenlyDistributedFrames: [CapturedFrame] = []
+        evenlyDistributedFrames.reserveCapacity(displayCount)
+        for position in 0..<displayCount {
             let sourceIndex = min(
                 source.count - 1,
                 Int((Double(position) + 0.5) * Double(source.count) / Double(displayCount))
             )
-            return source[sourceIndex]
+            evenlyDistributedFrames.append(source[sourceIndex])
         }
+        return evenlyDistributedFrames
     }
 
     /// SwiftUI's macOS slider reserves a thumb-radius at both ends of its
@@ -2306,41 +2340,16 @@ private struct ManualFrameEditor: View {
         }
     }
 
-    private var frameNudgeControls: some View {
-        HStack(spacing: 8) {
-            frameNudgeButton(
-                symbol: .skipPrevious,
-                label: t("editor.backTenFrames"),
-                offset: -10 * previewFrameStep
-            )
-            frameNudgeButton(
-                symbol: .previous,
-                label: t("editor.previousFrame"),
-                offset: -previewFrameStep
-            )
-            frameNudgeButton(
-                symbol: .next,
-                label: t("editor.nextFrame"),
-                offset: previewFrameStep
-            )
-            frameNudgeButton(
-                symbol: .skipNext,
-                label: t("editor.forwardTenFrames"),
-                offset: 10 * previewFrameStep
-            )
-        }
-    }
-
     private func frameNudgeButton(
-        symbol: ProjectIcon.Symbol,
         label: String,
         offset: Double
     ) -> some View {
         Button {
             nudgePreview(by: offset)
         } label: {
-            ProjectIcon(symbol: symbol, size: 16)
-                .frame(width: 36, height: 36)
+            Text(label)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .frame(width: 52, height: 36)
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -3269,9 +3278,9 @@ private struct ManualFrameEditorTextFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .textFieldStyle(.plain)
-            .font(.system(size: 13, weight: .medium, design: .monospaced))
+            .font(.system(size: 18, weight: .semibold, design: .monospaced))
             .foregroundStyle(.primary)
-            .multilineTextAlignment(.trailing)
+            .multilineTextAlignment(.center)
             .padding(.horizontal, 10)
             .frame(height: 36)
             .background(

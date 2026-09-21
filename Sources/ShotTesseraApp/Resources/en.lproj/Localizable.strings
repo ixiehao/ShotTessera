@@ -152,6 +152,10 @@
 "editor.previousFrame" = "Previous frame";
 "editor.nextFrame" = "Next frame";
 "editor.forwardTenFrames" = "Forward 10 frames";
+"editor.backFiveFrames" = "-5 fr";
+"editor.backOneFrame" = "-1 fr";
+"editor.forwardOneFrame" = "+1 fr";
+"editor.forwardFiveFrames" = "+5 fr";
 "failureReport.title" = "Failed videos";
 "failureReport.detail" = "%d videos need conversion. The rest of the batch kept running.";
 "failureReport.unknown" = "No specific reason was provided.";
