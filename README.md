@@ -27,7 +27,7 @@
 - Choose a storyboard background colour in Frame settings.
 - Supports MP4, MOV, MPEG, and other formats supported by macOS; optional timecodes and filename titles are available.
 - Exports PNG or JPG at 1920 px or wider as `video-name-shot-001.ext`, incrementing safely when needed.
-- Remembers your 中文, English, or 日本語 interface choice and supports light, dark, or system appearance.
+- Remembers your English, 中文, or 日本語 interface choice and supports light, dark, or system appearance.
 
 ## Download
 
