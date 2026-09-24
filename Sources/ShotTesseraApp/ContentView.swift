@@ -2522,21 +2522,17 @@ private struct ManualFrameEditor: View {
 
         let refinement = Task.detached(priority: .userInitiated) {
             let asset = AVURLAsset(url: source)
-            var refinedFrames: [CapturedFrame] = []
-            refinedFrames.reserveCapacity(framesToApply.count)
-            for frame in framesToApply {
-                try Task.checkCancellation()
-                let refined = (try? await ManualFrameExtractor.captureSharpestFrame(
-                    from: asset,
-                    duration: editorDuration,
-                    at: frame.time,
-                    identifier: frame.id,
-                    maximumEdge: maximumEdge,
-                    compressionQuality: 0.92
-                )) ?? frame
-                refinedFrames.append(refined)
-            }
-            return refinedFrames
+            let refined = try await ManualFrameExtractor.captureSharpestFrames(
+                from: asset,
+                duration: editorDuration,
+                frames: framesToApply,
+                maximumEdge: maximumEdge,
+                compressionQuality: 0.92
+            )
+            let refinedByID = Dictionary(uniqueKeysWithValues: refined.map { ($0.id, $0) })
+            // A damaged/VFR timestamp must not prevent a person from applying
+            // the rest of a deliberate manual selection.
+            return framesToApply.map { refinedByID[$0.id] ?? $0 }
         }
         Task {
             defer { isRefiningSelectedFrames = false }

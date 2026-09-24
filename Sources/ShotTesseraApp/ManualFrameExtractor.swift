@@ -1,10 +1,20 @@
 import AVFoundation
 import CoreGraphics
 import Foundation
+import OSLog
 
 /// A compact candidate sampler used only after a person opens the manual
 /// adjuster. The normal storyboard path remains a single, fast analysis pass.
 enum ManualFrameExtractor {
+    private static let candidateBatchSignposter = OSSignposter(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.shottessera.app",
+        category: "CandidateSampling"
+    )
+    private static let sharpnessBatchSignposter = OSSignposter(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.shottessera.app",
+        category: "FrameRefinement"
+    )
+
     /// Around a proposed moment, compare the surrounding decoded frames and
     /// retain the one with the strongest fine detail. Three frames on each side
     /// is short enough to preserve the intended moment, while being wide enough
@@ -102,6 +112,221 @@ enum ManualFrameExtractor {
         return CapturedFrame(id: identifier, time: resolvedTime, jpegData: jpegData, aspectRatio: aspectRatio)
     }
 
+    /// Refines a selected manual set in two decoder batches: first score the
+    /// same +/- 3-frame neighbourhood used by `captureSharpestFrame`, then
+    /// decode only the winning moments at export size. Applying a 6 × 6 grid no
+    /// longer starts 36 independent generators while preserving the exact
+    /// sharpness formula and a per-frame fallback for damaged media.
+    static func captureSharpestFrames(
+        from asset: AVURLAsset,
+        duration: Double,
+        frames: [CapturedFrame],
+        maximumEdge: CGFloat,
+        compressionQuality: CGFloat
+    ) async throws -> [CapturedFrame] {
+        guard !frames.isEmpty else { return [] }
+        let batchInterval = sharpnessBatchSignposter.beginInterval("selectedFrameRefinement")
+        defer {
+            sharpnessBatchSignposter.endInterval("selectedFrameRefinement", batchInterval)
+        }
+
+        let frameRate = await nominalFrameRate(for: asset)
+        let plans = frames.enumerated().map { offset, frame in
+            SharpnessPlan(
+                index: offset,
+                identifier: frame.id,
+                centre: min(max(0, frame.time), max(0, duration - 0.001)),
+                comparisonTimes: sharpnessComparisonTimes(
+                    around: frame.time,
+                    duration: duration,
+                    frameRate: frameRate
+                )
+            )
+        }
+
+        let analysisGenerator = AVAssetImageGenerator(asset: asset)
+        analysisGenerator.appliesPreferredTrackTransform = true
+        let analysisEdge = sharpnessAnalysisMaximumEdge(for: maximumEdge)
+        analysisGenerator.maximumSize = CGSize(width: analysisEdge, height: analysisEdge)
+        analysisGenerator.requestedTimeToleranceBefore = .zero
+        analysisGenerator.requestedTimeToleranceAfter = .zero
+        defer { analysisGenerator.cancelAllCGImageGeneration() }
+
+        let comparisonRequests = sharpnessRequestBatch(
+            plans: plans,
+            planIndices: Array(plans.indices),
+            frameRate: frameRate
+        ) { _, plan in plan.comparisonTimes }
+        let scoringInterval = sharpnessBatchSignposter.beginInterval("selectedFrameScoringDecode")
+        let bestByPlan: [SharpnessProbe?]
+        do {
+            defer {
+                sharpnessBatchSignposter.endInterval("selectedFrameScoringDecode", scoringInterval)
+            }
+            bestByPlan = try await scoreSharpnessBatch(
+                using: analysisGenerator,
+                requestBatch: comparisonRequests,
+                plans: plans,
+                frameRate: frameRate
+            )
+        }
+
+        let finalGenerator = AVAssetImageGenerator(asset: asset)
+        finalGenerator.appliesPreferredTrackTransform = true
+        finalGenerator.maximumSize = CGSize(width: maximumEdge, height: maximumEdge)
+        finalGenerator.requestedTimeToleranceBefore = .zero
+        finalGenerator.requestedTimeToleranceAfter = .zero
+        defer { finalGenerator.cancelAllCGImageGeneration() }
+
+        let finalRequests = sharpnessRequestBatch(
+            plans: plans,
+            planIndices: plans.indices.filter { bestByPlan[$0] != nil },
+            frameRate: frameRate
+        ) { index, _ in bestByPlan[index].map { [$0.time] } ?? [] }
+        let finalInterval = sharpnessBatchSignposter.beginInterval("selectedFrameFinalDecode")
+        let finalImages: [FinalSharpnessImage?]
+        do {
+            defer {
+                sharpnessBatchSignposter.endInterval("selectedFrameFinalDecode", finalInterval)
+            }
+            finalImages = try await decodeFinalSharpnessBatch(
+                using: finalGenerator,
+                requestBatch: finalRequests,
+                planCount: plans.count,
+                frameRate: frameRate
+            )
+        }
+
+        var output: [CapturedFrame] = []
+        output.reserveCapacity(plans.count)
+        for (index, plan) in plans.enumerated() {
+            try Task.checkCancellation()
+            guard let best = bestByPlan[index] else { continue }
+            let final = finalImages[index]
+            let image = final?.image ?? best.image
+            guard let jpegData = ImageCodec.jpegData(from: image, compressionQuality: compressionQuality) else {
+                continue
+            }
+            let capturedTime = final?.time ?? best.time
+            let aspectRatio = image.height > 0
+                ? Double(image.width) / Double(image.height)
+                : 16.0 / 9.0
+            output.append(CapturedFrame(
+                id: plan.identifier,
+                time: capturedTime,
+                jpegData: jpegData,
+                aspectRatio: aspectRatio
+            ))
+        }
+        return output
+    }
+
+    private struct SharpnessPlan {
+        let index: Int
+        let identifier: Int
+        let centre: Double
+        let comparisonTimes: [Double]
+    }
+
+    private struct SharpnessProbe {
+        let image: CGImage
+        let time: Double
+        let score: Float
+    }
+
+    private struct SharpnessRequestBatch {
+        let requestedTimes: [CMTime]
+        let planIndicesByRequestKey: [Int64: [Int]]
+    }
+
+    private struct FinalSharpnessImage {
+        let image: CGImage
+        let time: Double
+    }
+
+    private static func sharpnessRequestBatch(
+        plans: [SharpnessPlan],
+        planIndices: [Int],
+        frameRate: Double,
+        selecting times: (Int, SharpnessPlan) -> [Double]
+    ) -> SharpnessRequestBatch {
+        var requestedTimes: [CMTime] = []
+        var planIndicesByRequestKey: [Int64: [Int]] = [:]
+        var addedRequestKeys = Set<Int64>()
+
+        for index in planIndices {
+            var planRequestKeys = Set<Int64>()
+            for seconds in times(index, plans[index]) {
+                let key = candidateRequestKey(for: seconds, frameRate: frameRate)
+                guard planRequestKeys.insert(key).inserted else { continue }
+                planIndicesByRequestKey[key, default: []].append(index)
+                if addedRequestKeys.insert(key).inserted {
+                    requestedTimes.append(CMTime(seconds: seconds, preferredTimescale: 60_000))
+                }
+            }
+        }
+        return SharpnessRequestBatch(
+            requestedTimes: requestedTimes.sorted { $0.seconds < $1.seconds },
+            planIndicesByRequestKey: planIndicesByRequestKey
+        )
+    }
+
+    private static func scoreSharpnessBatch(
+        using generator: AVAssetImageGenerator,
+        requestBatch: SharpnessRequestBatch,
+        plans: [SharpnessPlan],
+        frameRate: Double
+    ) async throws -> [SharpnessProbe?] {
+        var bestByPlan = Array<SharpnessProbe?>(repeating: nil, count: plans.count)
+        guard !requestBatch.requestedTimes.isEmpty else { return bestByPlan }
+
+        for await result in generator.images(for: requestBatch.requestedTimes) {
+            try Task.checkCancellation()
+            guard case let .success(requestedTime, image, actualTime) = result else { continue }
+            let key = candidateRequestKey(for: requestedTime.seconds, frameRate: frameRate)
+            guard let planIndices = requestBatch.planIndicesByRequestKey[key] else { continue }
+            let resolvedTime = actualTime.isValid && actualTime.seconds.isFinite
+                ? actualTime.seconds
+                : requestedTime.seconds
+            let score = autoreleasepool { () -> Float in
+                let metrics = PixelMetrics.make(from: image)
+                return visualClarityScore(metrics)
+            }
+            for index in planIndices {
+                let distancePenalty = Float(abs(resolvedTime - plans[index].centre)) * 0.0001
+                let probe = SharpnessProbe(image: image, time: resolvedTime, score: score - distancePenalty)
+                if probe.score > (bestByPlan[index]?.score ?? -.greatestFiniteMagnitude) {
+                    bestByPlan[index] = probe
+                }
+            }
+        }
+        return bestByPlan
+    }
+
+    private static func decodeFinalSharpnessBatch(
+        using generator: AVAssetImageGenerator,
+        requestBatch: SharpnessRequestBatch,
+        planCount: Int,
+        frameRate: Double
+    ) async throws -> [FinalSharpnessImage?] {
+        var results = Array<FinalSharpnessImage?>(repeating: nil, count: planCount)
+        guard !requestBatch.requestedTimes.isEmpty else { return results }
+
+        for await result in generator.images(for: requestBatch.requestedTimes) {
+            try Task.checkCancellation()
+            guard case let .success(requestedTime, image, actualTime) = result else { continue }
+            let key = candidateRequestKey(for: requestedTime.seconds, frameRate: frameRate)
+            guard let planIndices = requestBatch.planIndicesByRequestKey[key] else { continue }
+            let resolvedTime = actualTime.isValid && actualTime.seconds.isFinite
+                ? actualTime.seconds
+                : requestedTime.seconds
+            for index in planIndices {
+                results[index] = FinalSharpnessImage(image: image, time: resolvedTime)
+            }
+        }
+        return results
+    }
+
     /// PixelMetrics reduces every image to 48 × 48 before scoring. Limiting the
     /// comparison decode to 480 px is therefore visually equivalent for this
     /// decision while sharply reducing decode, memory, and JPEG-buffer pressure.
@@ -178,6 +403,65 @@ enum ManualFrameExtractor {
         )
     }
 
+    /// Re-decodes only the final automatic tiles at presentation size after a
+    /// lightweight broad scan. It uses the same tolerant seeking as the former
+    /// broad pass, so this is a resolution upgrade rather than a new selection
+    /// rule. Exact sharpness refinement, when needed, is applied separately.
+    static func capturePresentationFrames(
+        from asset: AVURLAsset,
+        frames: [CapturedFrame],
+        maximumEdge: CGFloat,
+        compressionQuality: CGFloat
+    ) async throws -> [CapturedFrame] {
+        guard !frames.isEmpty else { return [] }
+        let interval = sharpnessBatchSignposter.beginInterval("presentationFrameDecode")
+        defer {
+            sharpnessBatchSignposter.endInterval("presentationFrameDecode", interval)
+        }
+
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: maximumEdge, height: maximumEdge)
+        let tolerance = CMTime(seconds: 0.75, preferredTimescale: 600)
+        generator.requestedTimeToleranceBefore = tolerance
+        generator.requestedTimeToleranceAfter = tolerance
+        defer { generator.cancelAllCGImageGeneration() }
+
+        var idsByRequestKey: [Int64: [Int]] = [:]
+        var requestedTimes: [CMTime] = []
+        var seenRequestKeys = Set<Int64>()
+        for frame in frames {
+            let key = presentationRequestKey(for: frame.time)
+            idsByRequestKey[key, default: []].append(frame.id)
+            if seenRequestKeys.insert(key).inserted {
+                requestedTimes.append(CMTime(seconds: frame.time, preferredTimescale: 60_000))
+            }
+        }
+
+        var capturedByID: [Int: CapturedFrame] = [:]
+        for await result in generator.images(for: requestedTimes.sorted { $0.seconds < $1.seconds }) {
+            try Task.checkCancellation()
+            guard case let .success(requestedTime, image, actualTime) = result,
+                  let identifiers = idsByRequestKey[presentationRequestKey(for: requestedTime.seconds)],
+                  let jpegData = ImageCodec.jpegData(from: image, compressionQuality: compressionQuality) else {
+                continue
+            }
+            let time = actualTime.isValid && actualTime.seconds.isFinite ? actualTime.seconds : requestedTime.seconds
+            let aspectRatio = image.height > 0
+                ? Double(image.width) / Double(image.height)
+                : 16.0 / 9.0
+            for identifier in identifiers {
+                capturedByID[identifier] = CapturedFrame(
+                    id: identifier,
+                    time: time,
+                    jpegData: jpegData,
+                    aspectRatio: aspectRatio
+                )
+            }
+        }
+        return frames.compactMap { capturedByID[$0.id] }
+    }
+
     static func captureCandidates(
         from videoURL: URL,
         gridSide: Int,
@@ -185,6 +469,11 @@ enum ManualFrameExtractor {
         count: Int,
         batch: Int
     ) async throws -> [CapturedFrame] {
+        let wholeBatch = candidateBatchSignposter.beginInterval("manualCandidateBatch")
+        defer {
+            candidateBatchSignposter.endInterval("manualCandidateBatch", wholeBatch)
+        }
+
         let asset = AVURLAsset(url: videoURL)
         guard try await asset.load(.isPlayable) else { throw StoryboardError.unsupportedCodec }
         let duration = try await asset.load(.duration).seconds
@@ -202,108 +491,202 @@ enum ManualFrameExtractor {
         generator.maximumSize = CGSize(width: CGFloat(analysisEdge), height: CGFloat(analysisEdge))
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
+        defer { generator.cancelAllCGImageGeneration() }
 
         let sampleCount = max(1, count)
         // A deterministic phase shift makes “regenerate” produce a visibly
         // different yet evenly distributed set of moments without random jitter.
         let phase = Double((batch * 37) % 97) / 97.0
-        var frames: [CapturedFrame] = []
-        frames.reserveCapacity(sampleCount)
-
-        for index in 0..<sampleCount {
-            try Task.checkCancellation()
+        let plans = (0..<sampleCount).map { index -> CandidatePlan in
             let shiftedProgress = (Double(index) + 0.5 + phase) / Double(sampleCount)
             let progress = shiftedProgress >= 1 ? shiftedProgress - 1 : shiftedProgress
             let requestedTime = min(max(0, duration * progress), max(0, duration - 0.01))
-            let frame = clearestCandidateFrame(
-                using: generator,
-                around: requestedTime,
-                duration: duration,
-                frameRate: frameRate,
-                identifier: -((batch + 1) * 10_000 + index + 1)
+            return CandidatePlan(
+                identifier: -((batch + 1) * 10_000 + index + 1),
+                requestedTime: requestedTime,
+                primaryTimes: candidateComparisonTimes(
+                    around: requestedTime,
+                    duration: duration,
+                    frameRate: frameRate
+                ),
+                recoveryTimes: candidateRecoveryTimes(
+                    around: requestedTime,
+                    duration: duration,
+                    frameRate: frameRate
+                )
             )
-            if let frame { frames.append(frame) }
+        }
+
+        // AVFoundation can decode a timeline of requested moments in one
+        // stream. The former implementation created 3–5 independent exact
+        // seeks per card; on a 72-card gallery that meant hundreds of serial
+        // decoder restarts. Retain every sampling time and score unchanged,
+        // while letting the framework batch their delivery.
+        let allPlanIndices = Array(plans.indices)
+        let primaryBatch = candidateRequestBatch(
+            plans: plans,
+            planIndices: allPlanIndices,
+            selecting: \.primaryTimes,
+            frameRate: frameRate
+        )
+        var bestByPlan = Array<CandidateProbe?>(repeating: nil, count: plans.count)
+        do {
+            let primaryInterval = candidateBatchSignposter.beginInterval("manualCandidatePrimaryDecode")
+            defer {
+                candidateBatchSignposter.endInterval("manualCandidatePrimaryDecode", primaryInterval)
+            }
+            bestByPlan = try await scoreCandidateBatch(
+                using: generator,
+                requestBatch: primaryBatch,
+                plans: plans,
+                existingBest: bestByPlan,
+                frameRate: frameRate
+            )
+        }
+
+        // Preserve the existing selective recovery behaviour. Only cards whose
+        // strongest primary result still looks diffuse receive the two wider
+        // probes, but those probes are also delivered as one decoder batch.
+        let recoveryPlanIndices = plans.indices.filter {
+            bestByPlan[$0].map { candidateNeedsRecovery($0.metrics) } == true
+        }
+        if !recoveryPlanIndices.isEmpty {
+            let recoveryBatch = candidateRequestBatch(
+                plans: plans,
+                planIndices: recoveryPlanIndices,
+                selecting: \.recoveryTimes,
+                frameRate: frameRate
+            )
+            do {
+                let recoveryInterval = candidateBatchSignposter.beginInterval("manualCandidateRecoveryDecode")
+                defer {
+                    candidateBatchSignposter.endInterval("manualCandidateRecoveryDecode", recoveryInterval)
+                }
+                bestByPlan = try await scoreCandidateBatch(
+                    using: generator,
+                    requestBatch: recoveryBatch,
+                    plans: plans,
+                    existingBest: bestByPlan,
+                    frameRate: frameRate
+                )
+            }
+        }
+
+        var frames: [CapturedFrame] = []
+        frames.reserveCapacity(sampleCount)
+        for (index, plan) in plans.enumerated() {
+            try Task.checkCancellation()
+            guard let best = bestByPlan[index],
+                  let jpegData = ImageCodec.jpegData(from: best.image, compressionQuality: 0.90) else {
+                continue
+            }
+            let aspectRatio = best.image.height > 0
+                ? Double(best.image.width) / Double(best.image.height)
+                : 16.0 / 9.0
+            frames.append(CapturedFrame(
+                id: plan.identifier,
+                time: best.time,
+                jpegData: jpegData,
+                aspectRatio: aspectRatio
+            ))
         }
 
         guard !frames.isEmpty else { throw StoryboardError.noUsableFrames }
         return frames.sorted { $0.time < $1.time }
     }
 
-    /// Gallery sampling must not present a dissolve, flash, or motion trail as a
-    /// plausible selectable still. Probe just three nearby exact frames (rather
-    /// than the seven-frame, full-resolution export refinement), then prefer the
-    /// one with concentrated edges and balanced exposure. This is deliberately
-    /// bounded: candidate loading remains interactive even for a 64-cell grid.
-    private static func clearestCandidateFrame(
-        using generator: AVAssetImageGenerator,
-        around requestedTime: Double,
-        duration: Double,
-        frameRate: Double,
-        identifier: Int
-    ) -> CapturedFrame? {
-        typealias Probe = (image: CGImage, time: Double, metrics: PixelMetrics, score: Float)
-        var best: Probe?
-        var probedTimes = Set<Int64>()
+    private struct CandidatePlan {
+        let identifier: Int
+        let requestedTime: Double
+        let primaryTimes: [Double]
+        let recoveryTimes: [Double]
+    }
 
-        func probe(_ sampleTime: Double) -> Probe? {
-            // Generators occasionally resolve adjacent requested moments to the
-            // same decoded frame. Avoid measuring that frame twice when a
-            // recovery probe is needed.
-            let requestKey = Int64((sampleTime * max(1, frameRate)).rounded())
-            guard probedTimes.insert(requestKey).inserted else { return nil }
-            let candidate: Probe? = autoreleasepool {
-                var actualTime = CMTime.zero
-                guard let image = try? generator.copyCGImage(
-                    at: CMTime(seconds: sampleTime, preferredTimescale: 60_000),
-                    actualTime: &actualTime
-                ) else { return nil }
+    private struct CandidateProbe {
+        let image: CGImage
+        let time: Double
+        let metrics: PixelMetrics
+        let score: Float
+    }
 
-                let resolvedTime = actualTime.isValid && actualTime.seconds.isFinite
-                    ? actualTime.seconds
-                    : sampleTime
-                let metrics = PixelMetrics.make(from: image)
-                // Keep candidates close to their intended time, while allowing a
-                // nearby clear frame to win over an obvious ghost frame.
-                let distancePenalty = Float(abs(resolvedTime - requestedTime)) * 0.025
-                return (image, resolvedTime, metrics, visualClarityScore(metrics) - distancePenalty)
-            }
-            return candidate
-        }
+    private struct CandidateRequestBatch {
+        let requestedTimes: [CMTime]
+        let planIndicesByRequestKey: [Int64: [Int]]
+    }
 
-        for sampleTime in candidateComparisonTimes(
-            around: requestedTime,
-            duration: duration,
-            frameRate: frameRate
-        ) {
-            guard let candidate = probe(sampleTime) else { continue }
-            if best == nil || candidate.score > best!.score { best = candidate }
-        }
+    private static func candidateRequestBatch(
+        plans: [CandidatePlan],
+        planIndices: [Int],
+        selecting times: KeyPath<CandidatePlan, [Double]>,
+        frameRate: Double
+    ) -> CandidateRequestBatch {
+        var requestedTimes: [CMTime] = []
+        var planIndicesByRequestKey: [Int64: [Int]] = [:]
+        var addedRequestKeys = Set<Int64>()
 
-        // Do not make every card decode a wider neighbourhood. Only a weak,
-        // diffuse result—typical of a dissolve, double exposure, or motion
-        // trail—gets two extra probes roughly a third of a second away. This
-        // escapes transitions without regressing candidate-grid load time.
-        if best.map({ candidateNeedsRecovery($0.metrics) }) == true {
-            for sampleTime in candidateRecoveryTimes(
-                around: requestedTime,
-                duration: duration,
-                frameRate: frameRate
-            ) {
-                guard let candidate = probe(sampleTime) else { continue }
-                if candidate.score > (best?.score ?? -.greatestFiniteMagnitude) {
-                    best = candidate
+        for index in planIndices {
+            var planRequestKeys = Set<Int64>()
+            for seconds in plans[index][keyPath: times] {
+                let key = candidateRequestKey(for: seconds, frameRate: frameRate)
+                // A request can collapse to the same source frame near a clip
+                // boundary. Like the previous per-card probe, score it once.
+                guard planRequestKeys.insert(key).inserted else { continue }
+                planIndicesByRequestKey[key, default: []].append(index)
+                if addedRequestKeys.insert(key).inserted {
+                    requestedTimes.append(CMTime(seconds: seconds, preferredTimescale: 60_000))
                 }
             }
         }
+        return CandidateRequestBatch(
+            requestedTimes: requestedTimes.sorted { $0.seconds < $1.seconds },
+            planIndicesByRequestKey: planIndicesByRequestKey
+        )
+    }
 
-        guard let best,
-              let jpegData = ImageCodec.jpegData(from: best.image, compressionQuality: 0.90) else {
-            return nil
+    private static func scoreCandidateBatch(
+        using generator: AVAssetImageGenerator,
+        requestBatch: CandidateRequestBatch,
+        plans: [CandidatePlan],
+        existingBest: [CandidateProbe?],
+        frameRate: Double
+    ) async throws -> [CandidateProbe?] {
+        guard !requestBatch.requestedTimes.isEmpty else { return existingBest }
+        var bestByPlan = existingBest
+
+        for await result in generator.images(for: requestBatch.requestedTimes) {
+            try Task.checkCancellation()
+            guard case let .success(requestedTime, image, actualTime) = result else { continue }
+            let requestKey = candidateRequestKey(for: requestedTime.seconds, frameRate: frameRate)
+            guard let planIndices = requestBatch.planIndicesByRequestKey[requestKey] else { continue }
+
+            let resolvedTime = actualTime.isValid && actualTime.seconds.isFinite
+                ? actualTime.seconds
+                : requestedTime.seconds
+            let metrics = autoreleasepool { PixelMetrics.make(from: image) }
+            for index in planIndices {
+                // Keep candidates close to their intended time, while allowing a
+                // nearby clear frame to win over an obvious ghost frame.
+                let distancePenalty = Float(abs(resolvedTime - plans[index].requestedTime)) * 0.025
+                let probe = CandidateProbe(
+                    image: image,
+                    time: resolvedTime,
+                    metrics: metrics,
+                    score: visualClarityScore(metrics) - distancePenalty
+                )
+                if probe.score > (bestByPlan[index]?.score ?? -.greatestFiniteMagnitude) {
+                    bestByPlan[index] = probe
+                }
+            }
         }
-        let aspectRatio = best.image.height > 0
-            ? Double(best.image.width) / Double(best.image.height)
-            : 16.0 / 9.0
-        return CapturedFrame(id: identifier, time: best.time, jpegData: jpegData, aspectRatio: aspectRatio)
+        return bestByPlan
+    }
+
+    private static func candidateRequestKey(for seconds: Double, frameRate: Double) -> Int64 {
+        Int64((seconds * max(1, frameRate)).rounded())
+    }
+
+    private static func presentationRequestKey(for seconds: Double) -> Int64 {
+        Int64((seconds * 60_000).rounded())
     }
 
     /// A compact three-point probe is intentionally wider than the final

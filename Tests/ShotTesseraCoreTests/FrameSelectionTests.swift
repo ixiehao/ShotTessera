@@ -237,6 +237,7 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(result.frames.count, 9)
         XCTAssertTrue(result.duration.isFinite)
         XCTAssertGreaterThan(result.duration, 0)
+        XCTAssertEqual(result.frames.map(\.time), result.frames.map(\.time).sorted())
 
         let outputData = try StoryboardComposer.render(
             result: result,
@@ -253,8 +254,37 @@ final class FrameSelectionTests: XCTestCase {
             count: 18,
             batch: 0
         )
-        XCTAssertGreaterThanOrEqual(manualCandidates.count, 9)
+        XCTAssertEqual(manualCandidates.count, 18)
+        XCTAssertEqual(manualCandidates.map(\.time), manualCandidates.map(\.time).sorted())
+        XCTAssertEqual(Set(manualCandidates.map(\.id)).count, 18)
         XCTAssertEqual(ManualFrameSelector.selectIDs(from: manualCandidates, count: 9).count, 9)
+
+        let selectedManualCandidates = Array(manualCandidates.prefix(9))
+        let refinedManualCandidates = try await ManualFrameExtractor.captureSharpestFrames(
+            from: AVURLAsset(url: sourceURL),
+            duration: result.duration,
+            frames: selectedManualCandidates,
+            maximumEdge: 640,
+            compressionQuality: 0.92
+        )
+        XCTAssertEqual(refinedManualCandidates.count, selectedManualCandidates.count)
+        XCTAssertEqual(
+            Set(refinedManualCandidates.map(\.id)),
+            Set(selectedManualCandidates.map(\.id))
+        )
+        XCTAssertTrue(refinedManualCandidates.allSatisfy { !$0.jpegData.isEmpty })
+
+        let presentationManualCandidates = try await ManualFrameExtractor.capturePresentationFrames(
+            from: AVURLAsset(url: sourceURL),
+            frames: selectedManualCandidates,
+            maximumEdge: 640,
+            compressionQuality: 0.92
+        )
+        XCTAssertEqual(presentationManualCandidates.count, selectedManualCandidates.count)
+        XCTAssertEqual(
+            Set(presentationManualCandidates.map(\.id)),
+            Set(selectedManualCandidates.map(\.id))
+        )
 
         let manuallyPositionedFrame = try await ManualFrameExtractor.captureFrame(
             from: sourceURL,
@@ -309,6 +339,15 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(atStart.count, 2)
         XCTAssertEqual(try XCTUnwrap(atStart.first), 0, accuracy: 0.000_001)
         XCTAssertEqual(try XCTUnwrap(atStart.last), 0.45, accuracy: 0.000_001)
+    }
+
+    func testLargeGridsUseEnoughSpareCandidatesWithoutTheFormerFiftyPercentOverscan() {
+        let analyzer = VideoStoryboardAnalyzer()
+
+        XCTAssertEqual(analyzer.analysisSampleCount(for: 9), 48)
+        XCTAssertEqual(analyzer.analysisSampleCount(for: 36), 48)
+        XCTAssertEqual(analyzer.analysisSampleCount(for: 49), 62)
+        XCTAssertEqual(analyzer.analysisSampleCount(for: 64), 80)
     }
 
     func testSharpnessComparisonCapsOnlyItsAnalysisDecodeResolution() {
@@ -484,6 +523,24 @@ final class FrameSelectionTests: XCTestCase {
 
         let selected = FrameSelection.chooseFrames(from: [whiteCard, darkCard, scene], count: 1)
         XCTAssertEqual(selected.map(\.id), [scene.id])
+    }
+
+    func testSparseCinematicShotRemainsEligibleWithoutTextDetection() {
+        var atmosphericShot = frame(
+            id: 0,
+            time: 0,
+            histogram: [0.10, 0.90],
+            sharpness: 0.20,
+            fingerprint: 0x0000_0000_0000_FFFF
+        )
+        // A visually simple night or fog shot is not a detected text card.
+        atmosphericShot.dominantToneRatio = 0.90
+        let middleScene = frame(id: 1, time: 10, histogram: [0.20, 0.80], fingerprint: 0x00FF_00FF_00FF_00FF)
+        let lateScene = frame(id: 2, time: 11, histogram: [0.80, 0.20], fingerprint: 0xFF00_FF00_FF00_FF00)
+
+        let selected = FrameSelection.chooseFrames(from: [atmosphericShot, middleScene, lateScene], count: 2)
+
+        XCTAssertTrue(selected.contains(where: { $0.id == atmosphericShot.id }), "Selected IDs: \(selected.map(\.id))")
     }
 
     func testAHumanOnAnOtherwiseSparseFramePreventsFalseTitleCardRejection() {

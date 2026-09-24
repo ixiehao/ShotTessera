@@ -1,18 +1,27 @@
 import AVFoundation
 import CoreGraphics
 import Foundation
+import OSLog
 import Vision
 
 /// Stateless analysis worker. Keeping this as a value type lets Swift verify
 /// that it is safe to pass into the detached generation task.
 struct VideoStoryboardAnalyzer: Sendable {
+    private static let pipelineSignposter = OSSignposter(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.shottessera.app",
+        category: "StoryboardAnalysis"
+    )
     // The analysis thumbnail is also the storyboard source. Reusing it avoids a
     // second random-access decode pass after selection, which is the slowest part
     // of many H.264/HEVC files.
     private let maximumAnalysisSamples = 144
     private let minimumAnalysisEdge: CGFloat = 480
     private let maximumAnalysisEdge: CGFloat = 1280
-    private let maximumVisionCandidates = 32
+    // Vision is valuable as a preference signal, but it must not dominate the
+    // runtime of a normal storyboard. The lightweight pixel scan still covers
+    // the full timeline; Vision only validates a small, representative subset.
+    private let maximumPersonVisionCandidates = 16
+    private let maximumTextVisionCandidates = 8
 
     func analyze(
         videoURL: URL,
@@ -21,6 +30,11 @@ struct VideoStoryboardAnalyzer: Sendable {
         progress: @escaping @Sendable (Double) -> Void,
         onPreviewFrame: @escaping @Sendable (CapturedFrame, Int, Int) -> Void
     ) async throws -> StoryboardResult {
+        let wholePipeline = Self.pipelineSignposter.beginInterval("storyboardPipeline")
+        defer {
+            Self.pipelineSignposter.endInterval("storyboardPipeline", wholePipeline)
+        }
+
         let asset = AVURLAsset(url: videoURL)
         let isPlayable = try await asset.load(.isPlayable)
         guard isPlayable else { throw StoryboardError.unsupportedCodec }
@@ -28,76 +42,131 @@ struct VideoStoryboardAnalyzer: Sendable {
         guard duration.isFinite, duration > 0 else { throw StoryboardError.unreadableVideo }
 
         let targetCount = gridSide * gridSide
-        let requestedSamples = max(48, Int((Double(targetCount) * 1.5).rounded(.up)))
-        let sampleCount = min(maximumAnalysisSamples, requestedSamples)
+        let sampleCount = analysisSampleCount(for: targetCount)
         let interval = max(0.22, duration / Double(sampleCount))
         let analysisGenerator = imageGenerator(
             asset: asset,
-            maximumEdge: analysisMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
+            maximumEdge: broadScanMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
         )
 
+        var requestedTimes: [CMTime] = []
+        var requestedSeconds = 0.0
+        while requestedSeconds < duration {
+            requestedTimes.append(CMTime(seconds: requestedSeconds, preferredTimescale: 600))
+            requestedSeconds += interval
+        }
+
         var descriptors: [FrameDescriptor] = []
-        var index = 0
-        var time = 0.0
-        while time < duration {
-            try Task.checkCancellation()
-            defer { time += interval; index += 1 }
-            // Image decoding and metric buffers can accumulate across a long
-            // batch. Keep each pass scoped so memory remains stable on both
-            // Intel and Apple Silicon Macs.
-            let descriptor: FrameDescriptor? = autoreleasepool {
-                var actualTime = CMTime.zero
-                guard let image = try? analysisGenerator.copyCGImage(
-                    at: CMTime(seconds: time, preferredTimescale: 600),
-                    actualTime: &actualTime
-                ), let previewData = ImageCodec.jpegData(from: image, compressionQuality: 0.88) else {
-                    return nil
-                }
-                let metrics = PixelMetrics.make(from: image)
-                var descriptor = FrameDescriptor(
-                    id: index,
-                    time: actualTime.isValid && actualTime.seconds.isFinite ? actualTime.seconds : time,
-                    histogram: metrics.histogram,
-                    luminance: metrics.luminance,
-                    blackRatio: metrics.blackRatio,
-                    brightRatio: metrics.brightRatio,
-                    dominantToneRatio: metrics.dominantToneRatio,
-                    sharpness: metrics.sharpness,
-                    fingerprint: metrics.fingerprint,
-                    previewData: previewData
-                )
-                descriptor.aspectRatio = image.height > 0 ? Double(image.width) / Double(image.height) : (16.0 / 9.0)
-                return descriptor
+        descriptors.reserveCapacity(requestedTimes.count)
+        var completedSamples = 0
+        // AVFoundation's async image sequence batches the timeline requests in
+        // one decoder pipeline. On current Apple Silicon Macs this avoids the
+        // repeated caller-thread stalls of copyCGImage(at:) while retaining the
+        // same tolerant keyframe behavior and macOS 13 compatibility.
+        defer { analysisGenerator.cancelAllCGImageGeneration() }
+        do {
+            let broadDecode = Self.pipelineSignposter.beginInterval("storyboardBroadDecode")
+            defer {
+                Self.pipelineSignposter.endInterval("storyboardBroadDecode", broadDecode)
             }
-            guard let descriptor else { continue }
-            descriptors.append(descriptor)
-            progress(0.05 + 0.53 * min(1, time / duration))
+            for await result in analysisGenerator.images(for: requestedTimes) {
+                try Task.checkCancellation()
+                completedSamples += 1
+                guard case let .success(requestedTime, image, actualTime) = result else {
+                    progress(0.05 + 0.53 * Double(completedSamples) / Double(max(1, requestedTimes.count)))
+                    continue
+                }
+                // Image decoding and metric buffers can accumulate across a long
+                // batch. Keep each pass scoped so memory remains stable on both
+                // Intel and Apple Silicon Macs.
+                let descriptor: FrameDescriptor? = autoreleasepool {
+                    guard let previewData = ImageCodec.jpegData(from: image, compressionQuality: 0.88) else {
+                        return nil
+                    }
+                    let metrics = PixelMetrics.make(from: image)
+                    var descriptor = FrameDescriptor(
+                        id: completedSamples - 1,
+                        time: actualTime.isValid && actualTime.seconds.isFinite ? actualTime.seconds : requestedTime.seconds,
+                        histogram: metrics.histogram,
+                        luminance: metrics.luminance,
+                        blackRatio: metrics.blackRatio,
+                        brightRatio: metrics.brightRatio,
+                        dominantToneRatio: metrics.dominantToneRatio,
+                        sharpness: metrics.sharpness,
+                        fingerprint: metrics.fingerprint,
+                        previewData: previewData
+                    )
+                    descriptor.aspectRatio = image.height > 0 ? Double(image.width) / Double(image.height) : (16.0 / 9.0)
+                    return descriptor
+                }
+                guard let descriptor else { continue }
+                descriptors.append(descriptor)
+                progress(0.05 + 0.53 * Double(completedSamples) / Double(max(1, requestedTimes.count)))
+            }
         }
 
         guard !descriptors.isEmpty else { throw StoryboardError.unreadableVideo }
+        descriptors.sort { $0.time < $1.time }
         descriptors = addingTemporalSignals(to: descriptors)
 
-        // Vision is comparatively expensive. Score a compact blend of distributed
-        // and high-quality candidates instead of inspecting the entire timeline.
-        let visionSampleCount = min(
-            descriptors.count,
-            min(maximumVisionCandidates, max(16, targetCount * 2))
+        // Vision is the slowest part of automatic selection. Keep people and
+        // text analysis intentionally independent: people scoring samples a
+        // compact blend of shot leaders and time coverage, while OCR only
+        // examines likely title-card locations. We do not run three Vision
+        // requests against every broad-scan frame.
+        let personCandidates = peopleCandidates(
+            from: descriptors,
+            count: personVisionBudget(for: targetCount)
         )
-        let visionCandidates = peopleCandidates(from: descriptors, count: visionSampleCount)
+        let textCandidates = titleCardCandidates(
+            from: descriptors,
+            count: textVisionBudget(for: targetCount)
+        )
         var peopleSignalsByID: [Int: PersonSignals] = [:]
         var textScoreByID: [Int: Float] = [:]
-        for (offset, candidate) in visionCandidates.enumerated() {
-            try Task.checkCancellation()
-            let scores: (people: PersonSignals, text: Float)? = autoreleasepool {
-                guard let data = candidate.previewData, let image = ImageCodec.cgImage(from: data) else { return nil }
-                let preview = visionPreview(from: image)
-                return (personSignals(in: preview), textOverlayScore(in: preview))
+        let visionWorkCount = max(1, personCandidates.count + textCandidates.count)
+        var completedVisionWork = 0
+        do {
+            let visionInterval = Self.pipelineSignposter.beginInterval("storyboardVision")
+            defer {
+                Self.pipelineSignposter.endInterval("storyboardVision", visionInterval)
             }
-            if let scores {
-                peopleSignalsByID[candidate.id] = scores.people
-                textScoreByID[candidate.id] = scores.text
+
+            // Boundary and low-detail candidates often need both person and OCR
+            // checks. Decode and scale their JPEG once, rather than repeating
+            // the same image work for each Vision request type.
+            var visionPreviewsByID: [Int: CGImage] = [:]
+            for candidate in personCandidates + textCandidates where visionPreviewsByID[candidate.id] == nil {
+                let preview: CGImage? = autoreleasepool {
+                    guard let data = candidate.previewData,
+                          let image = ImageCodec.cgImage(from: data) else {
+                        return nil
+                    }
+                    return visionPreview(from: image)
+                }
+                if let preview {
+                    visionPreviewsByID[candidate.id] = preview
+                }
             }
-            progress(0.58 + 0.14 * Double(offset + 1) / Double(visionCandidates.count))
+
+            for candidate in personCandidates {
+                try Task.checkCancellation()
+                let people = visionPreviewsByID[candidate.id].map(personSignals(in:))
+                if let people {
+                    peopleSignalsByID[candidate.id] = people
+                }
+                completedVisionWork += 1
+                progress(0.58 + 0.14 * Double(completedVisionWork) / Double(visionWorkCount))
+            }
+            for candidate in textCandidates {
+                try Task.checkCancellation()
+                let textScore = visionPreviewsByID[candidate.id].map(textOverlayScore(in:))
+                if let textScore {
+                    textScoreByID[candidate.id] = textScore
+                }
+                completedVisionWork += 1
+                progress(0.58 + 0.14 * Double(completedVisionWork) / Double(visionWorkCount))
+            }
         }
         descriptors = descriptors.map { descriptor in
             var updated = descriptor
@@ -116,41 +185,80 @@ struct VideoStoryboardAnalyzer: Sendable {
 
         var captured: [CapturedFrame] = []
         let finalFrameEdge = analysisMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
-        for (offset, descriptor) in selected.enumerated() {
-            try Task.checkCancellation()
-            guard let data = descriptor.previewData else { continue }
-            let fallback = CapturedFrame(
-                id: descriptor.id,
-                time: descriptor.time,
-                jpegData: data,
-                aspectRatio: descriptor.aspectRatio
-            )
-            // The broad scan above deliberately favors speed. Before committing
-            // each final tile, make a precise +/- 3-frame comparison so motion
-            // blur does not become the image exported to the storyboard.
-            let frame: CapturedFrame
-            do {
-                frame = try await ManualFrameExtractor.captureSharpestFrame(
-                    from: asset,
-                    duration: duration,
-                    at: descriptor.time,
-                    identifier: descriptor.id,
-                    maximumEdge: finalFrameEdge,
-                    compressionQuality: 0.92
-                )
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                // A corrupted timestamp must not blank an otherwise usable
-                // storyboard tile; retain the analysis thumbnail as a fallback.
-                frame = fallback
+        do {
+            let finalRefinement = Self.pipelineSignposter.beginInterval("storyboardFinalRefinement")
+            defer {
+                Self.pipelineSignposter.endInterval("storyboardFinalRefinement", finalRefinement)
             }
-            captured.append(frame)
-            onPreviewFrame(frame, captured.count, selected.count)
-            progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))
-            // Yield so the main actor can present progressive cards, but do not
-            // add an artificial half-second delay to every video in a batch.
-            await Task.yield()
+
+            let fallbackByID = Dictionary(uniqueKeysWithValues: selected.compactMap { descriptor -> (Int, CapturedFrame)? in
+                guard let data = descriptor.previewData else { return nil }
+                return (
+                    descriptor.id,
+                    CapturedFrame(
+                        id: descriptor.id,
+                        time: descriptor.time,
+                        jpegData: data,
+                        aspectRatio: descriptor.aspectRatio
+                    )
+                )
+            })
+            let refinementInputs = selected.compactMap { descriptor -> CapturedFrame? in
+                guard requiresExactRefinement(descriptor) else { return nil }
+                return fallbackByID[descriptor.id]
+            }
+            let presentationByID: [Int: CapturedFrame]
+            if needsPresentationUpgrade(gridSide: gridSide, outputWidth: outputWidth) {
+                do {
+                    let presentationFrames = try await ManualFrameExtractor.capturePresentationFrames(
+                        from: asset,
+                        frames: selected.compactMap { fallbackByID[$0.id] },
+                        maximumEdge: finalFrameEdge,
+                        compressionQuality: 0.92
+                    )
+                    presentationByID = Dictionary(uniqueKeysWithValues: presentationFrames.map { ($0.id, $0) })
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    presentationByID = [:]
+                }
+            } else {
+                presentationByID = [:]
+            }
+            let refinedByID: [Int: CapturedFrame]
+            if refinementInputs.isEmpty {
+                refinedByID = [:]
+            } else {
+                do {
+                    let refined = try await ManualFrameExtractor.captureSharpestFrames(
+                        from: asset,
+                        duration: duration,
+                        frames: refinementInputs,
+                        maximumEdge: finalFrameEdge,
+                        compressionQuality: 0.92
+                    )
+                    refinedByID = Dictionary(uniqueKeysWithValues: refined.map { ($0.id, $0) })
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // A damaged timestamp must not turn a usable automatic
+                    // storyboard into an error; all cards retain their broad
+                    // scan image when the optional batch refinement fails.
+                    refinedByID = [:]
+                }
+            }
+
+            for (offset, descriptor) in selected.enumerated() {
+                try Task.checkCancellation()
+                guard let fallback = fallbackByID[descriptor.id] else { continue }
+                let frame = refinedByID[descriptor.id] ?? presentationByID[descriptor.id] ?? fallback
+                captured.append(frame)
+                onPreviewFrame(frame, captured.count, selected.count)
+                progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))
+                // Yield so the main actor can present progressive cards, but do not
+                // add an artificial half-second delay to every video in a batch.
+                await Task.yield()
+            }
         }
 
         guard !captured.isEmpty else { throw StoryboardError.noUsableFrames }
@@ -187,6 +295,58 @@ struct VideoStoryboardAnalyzer: Sendable {
         return min(maximumAnalysisEdge, max(minimumAnalysisEdge, desiredEdge))
     }
 
+    func analysisSampleCount(for targetCount: Int) -> Int {
+        // A small contact sheet needs a generous fixed pool to discover scene
+        // changes. For 7 × 7 and 8 × 8, however, a 50% surplus decodes many
+        // cards that cannot influence the final grid. Keep at least 12 spare
+        // candidates and roughly 25% headroom, which is sufficient for cuts,
+        // near-duplicates, and title-card rejection without wasting a long
+        // video's decoder budget.
+        let extraCandidates = max(12, Int((Double(max(1, targetCount)) * 0.25).rounded(.up)))
+        let requested = max(48, targetCount + extraCandidates)
+        return min(maximumAnalysisSamples, requested)
+    }
+
+    /// Pixel metrics are reduced to 48 × 48 and Vision previews are capped at
+    /// 400 px, so a small grid does not need to decode every broad-scan moment
+    /// at export resolution. Decode its 9–16 final cards once at full display
+    /// size after selection instead. Large grids already operate near the card
+    /// size, where a second pass would cost more than it saves.
+    private func broadScanMaximumEdge(gridSide: Int, outputWidth: Int) -> CGFloat {
+        let presentationEdge = analysisMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
+        guard needsPresentationUpgrade(gridSide: gridSide, outputWidth: outputWidth) else {
+            return presentationEdge
+        }
+        return min(400, presentationEdge)
+    }
+
+    private func needsPresentationUpgrade(gridSide: Int, outputWidth: Int) -> Bool {
+        gridSide <= 4 && analysisMaximumEdge(gridSide: gridSide, outputWidth: outputWidth) > 400
+    }
+
+    private func personVisionBudget(for targetCount: Int) -> Int {
+        let scaled = max(8, Int((Double(max(1, targetCount)).squareRoot() * 2).rounded(.up)))
+        return min(maximumPersonVisionCandidates, scaled)
+    }
+
+    private func textVisionBudget(for targetCount: Int) -> Int {
+        // OCR is reserved for common cover/credit/warning locations. It remains
+        // available as a guard without making every cinematic frame pay for text
+        // recognition.
+        let scaled = max(6, Int((Double(max(1, targetCount)).squareRoot()).rounded(.up)))
+        return min(maximumTextVisionCandidates, scaled)
+    }
+
+    private func requiresExactRefinement(_ descriptor: FrameDescriptor) -> Bool {
+        // The broad scan already yields a clear, correctly sized JPEG. Only
+        // spend seven exact decodes where the low-cost temporal metrics signal a
+        // realistic risk of a motion trail, cut, or weak detail. Static dialogue
+        // and establishing shots keep their selected scan image immediately.
+        descriptor.motionScore >= 0.50
+            || descriptor.transitionScore >= 0.18
+            || descriptor.sharpness < 0.10
+    }
+
     private func peopleCandidates(from descriptors: [FrameDescriptor], count: Int) -> [FrameDescriptor] {
         let usable = descriptors.filter(\.isUsable)
         guard !usable.isEmpty, count > 0 else { return [] }
@@ -210,6 +370,30 @@ struct VideoStoryboardAnalyzer: Sendable {
         return candidates
     }
 
+    private func titleCardCandidates(from descriptors: [FrameDescriptor], count: Int) -> [FrameDescriptor] {
+        let usable = descriptors.filter(\.isUsable)
+        guard !usable.isEmpty, count > 0 else { return [] }
+
+        // Covers and credits cluster at the boundaries; warnings and intertitles
+        // are usually sparse or uniform. These inexpensive pixel metrics provide
+        // a focused OCR shortlist without treating a dark cinematic shot as bad.
+        let boundaryCount = min(2, usable.count)
+        let boundaries = Array(usable.prefix(boundaryCount)) + Array(usable.suffix(boundaryCount))
+        let sparse = usable
+            .filter(\.isVisuallySparseCard)
+            .sorted { $0.qualityScore < $1.qualityScore }
+        let lowestDetail = usable.sorted { $0.sharpness < $1.sharpness }
+
+        var seen = Set<Int>()
+        var candidates: [FrameDescriptor] = []
+        for candidate in boundaries + sparse + lowestDetail where candidates.count < count {
+            if seen.insert(candidate.id).inserted {
+                candidates.append(candidate)
+            }
+        }
+        return candidates
+    }
+
     private struct PersonSignals: Sendable {
         var score: Float = 0
         var faceScore: Float = 0
@@ -220,18 +404,17 @@ struct VideoStoryboardAnalyzer: Sendable {
     private func personSignals(in image: CGImage) -> PersonSignals {
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         let faces = VNDetectFaceRectanglesRequest()
-        guard (try? handler.perform([faces])) != nil else { return PersonSignals() }
+        let bodies = VNDetectHumanRectanglesRequest()
+        bodies.upperBodyOnly = false
+        // A single handler pass shares image preparation between face and body
+        // detection. The old two-pass version doubled Vision overhead per frame.
+        guard (try? handler.perform([faces, bodies])) != nil else { return PersonSignals() }
         let detectedFaces = faces.results ?? []
         let faceArea = detectedFaces
             .map { Float($0.boundingBox.width * $0.boundingBox.height) }
             .max() ?? 0
         let faceScore = min(1, faceArea * 11)
 
-        let bodies = VNDetectHumanRectanglesRequest()
-        bodies.upperBodyOnly = false
-        guard (try? handler.perform([bodies])) != nil else {
-            return PersonSignals(score: faceScore * 0.92, faceScore: faceScore, bodyScore: 0, faceCount: detectedFaces.count)
-        }
         let bodyArea = (bodies.results ?? [])
             .map { Float($0.boundingBox.width * $0.boundingBox.height) }
             .max() ?? 0
@@ -263,6 +446,33 @@ struct VideoStoryboardAnalyzer: Sendable {
     }
 
     private func textOverlayScore(in image: CGImage) -> Float {
+        let regionScore = textRegionScore(in: image)
+        // A small subtitle line is not a title card; an obvious multi-line card
+        // needs no character recognition at all. Restrict the comparatively
+        // expensive OCR pass to the ambiguous middle band, where it can still
+        // separate a genuine cover or warning from on-screen dialogue.
+        guard regionScore >= 0.34 else { return 0 }
+        guard regionScore < 0.70 else { return regionScore }
+        return max(regionScore, recognizedTextOverlayScore(in: image))
+    }
+
+    private func textRegionScore(in image: CGImage) -> Float {
+        let request = VNDetectTextRectanglesRequest()
+        // We score line regions only; character boxes provide no selection
+        // benefit and add work on frames that are clearly not title cards.
+        request.reportCharacterBoxes = false
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        guard (try? handler.perform([request])) != nil else { return 0 }
+        let textRegions = request.results ?? []
+        return overlayTextScore(
+            area: textRegions.reduce(Float(0)) { partial, observation in
+                partial + Float(observation.boundingBox.width * observation.boundingBox.height)
+            },
+            count: textRegions.count
+        )
+    }
+
+    private func recognizedTextOverlayScore(in image: CGImage) -> Float {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .fast
         request.usesLanguageCorrection = false
@@ -274,9 +484,13 @@ struct VideoStoryboardAnalyzer: Sendable {
         let area = textRegions.reduce(Float(0)) { partial, observation in
             partial + Float(observation.boundingBox.width * observation.boundingBox.height)
         }
+        return overlayTextScore(area: area, count: textRegions.count)
+    }
+
+    private func overlayTextScore(area: Float, count: Int) -> Float {
         // One large title or several warning lines are meaningful. A normal
         // one-line subtitle remains below the rejection threshold.
-        return min(1, area * 4 + Float(textRegions.count) * 0.10)
+        min(1, area * 4 + Float(count) * 0.10)
     }
 
     private func visionPreview(from image: CGImage) -> CGImage {

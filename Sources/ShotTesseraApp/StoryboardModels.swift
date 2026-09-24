@@ -382,7 +382,18 @@ struct FrameDescriptor: Identifiable, Sendable {
         // never outranks a stable dramatic shot.
         let actionPreference = bodyScore * motionScore * 0.24
         let transitionPenalty = transitionScore * 0.34
-        let textPenalty: Float = isLikelyNonContentGraphic ? 0.55 : 0
+        // OCR-confirmed title cards remain poor storyboard material. A dark or
+        // minimalist cinematic shot, however, is not equivalent to a title card:
+        // retain it as a slightly lower-priority option rather than effectively
+        // removing it from automatic selection.
+        let textPenalty: Float
+        if textOverlayScore >= 0.65 {
+            textPenalty = 0.55
+        } else if isVisuallySparseCard && peopleScore < 0.08 {
+            textPenalty = 0.18
+        } else {
+            textPenalty = 0
+        }
         return max(0, exposure * 0.35 + detail * 0.55 + facePreference + bodyPreference + personFallback + interactionPreference + actionPreference - darknessPenalty - transitionPenalty - textPenalty)
     }
 }

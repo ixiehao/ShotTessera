@@ -35,11 +35,13 @@ enum FrameSelection {
         // A grid of black or excessively blurry cards is not a useful storyboard.
         // The analyzer turns this empty result into a clear user-facing error.
         guard !usablePool.isEmpty else { return [] }
-        // Prefer real video content over title cards, cover artwork, and text-only
-        // warnings. If a clip genuinely contains only such frames, fall back so we
-        // still produce a result rather than leaving the storyboard blank.
-        let contentPool = usablePool.filter { !$0.isLikelyNonContentGraphic }
-        let pool = contentPool.isEmpty ? usablePool : contentPool
+        // Only a high-confidence text card is a hard rejection. Never make "no
+        // detected person", a dark scene, or a sparse composition a hard rule:
+        // Vision deliberately examines only a compact subset of a video, and an
+        // absent signal is not proof of non-content. This keeps establishing shots
+        // and action beats available while still removing real covers/warnings.
+        let textFreePool = usablePool.filter { $0.textOverlayScore < 0.65 }
+        let pool = textFreePool.isEmpty ? usablePool : textFreePool
         let ranges = sceneRanges(in: pool)
         let sceneIndexByID = sceneIndexMap(ranges: ranges, frames: pool)
 
@@ -53,6 +55,12 @@ enum FrameSelection {
             let stable = stableCandidates(in: shot)
             candidates.append(contentsOf: stable.prefix(2))
         }
+
+        // Preserve the useful narrative coverage of the V0.2.6 time buckets,
+        // but use them as optional anchors rather than reserved slots. A weak
+        // opening card is therefore available only as a last resort, while a
+        // meaningful quiet or dark scene retains a route into the final sheet.
+        candidates.append(contentsOf: temporalAnchors(in: pool, count: min(count * 2, pool.count)))
         candidates = uniqueCandidates(candidates)
 
         // Long, low-cut scenes need more than two options for a large grid. Add
@@ -68,11 +76,16 @@ enum FrameSelection {
             sceneIndexByID: sceneIndexByID,
             count: count
         )
-        guard selected.count < count else { return selected.sorted { $0.time < $1.time } }
+        let coverageAdjusted = improveTimelineCoverage(
+            selected,
+            candidates: candidates,
+            count: count
+        )
+        guard coverageAdjusted.count < count else { return coverageAdjusted.sorted { $0.time < $1.time } }
 
         // A very static clip can legitimately have few visually distinct frames.
         // Complete the requested grid without reintroducing unusable/title frames.
-        let filled = selected + relaxedBucketFill(from: pool, current: selected, count: count)
+        let filled = coverageAdjusted + relaxedBucketFill(from: pool, current: coverageAdjusted, count: count)
         var ids = Set<Int>()
         let distinctTimestamps = filled.filter { ids.insert($0.id).inserted }
         return Array(distinctTimestamps.prefix(count)).sorted { $0.time < $1.time }
@@ -130,6 +143,63 @@ enum FrameSelection {
         return output
     }
 
+    private static func temporalAnchors(in pool: [FrameDescriptor], count: Int) -> [FrameDescriptor] {
+        guard count > 0, let first = pool.first, let last = pool.last else { return [] }
+        let span = max(0.001, last.time - first.time)
+
+        return (0..<count).compactMap { bucket in
+            let lower = first.time + span * Double(bucket) / Double(count)
+            let upper = first.time + span * Double(bucket + 1) / Double(count)
+            return pool
+                .filter { $0.time >= lower && ($0.time < upper || bucket == count - 1) }
+                .max { $0.qualityScore < $1.qualityScore }
+        }
+    }
+
+    /// The first pass deliberately favors quality and visual novelty. If that
+    /// produces a cluster of similarly timed frames, replace only the redundant
+    /// member with a sufficiently good temporal anchor. This restores story
+    /// coverage without returning to mandatory, low-quality time buckets.
+    private static func improveTimelineCoverage(
+        _ selected: [FrameDescriptor],
+        candidates: [FrameDescriptor],
+        count: Int
+    ) -> [FrameDescriptor] {
+        guard selected.count > 1, count > 1 else { return selected }
+        let orderedCandidates = candidates.sorted { $0.time < $1.time }
+        guard let first = orderedCandidates.first, let last = orderedCandidates.last else { return selected }
+
+        let desiredGap = max(0.001, (last.time - first.time) / Double(count))
+        let qualityCeiling = max(0.001, candidates.map(\.qualityScore).max() ?? 0.001)
+        var output = selected
+
+        for anchor in temporalAnchors(in: orderedCandidates, count: count) {
+            guard !output.contains(where: { $0.id == anchor.id }),
+                  anchor.qualityScore >= qualityCeiling * 0.70 else { continue }
+
+            let crowded = output.enumerated().compactMap { index, frame -> (index: Int, gap: Double)? in
+                let nearestGap = output.enumerated()
+                    .filter { $0.offset != index }
+                    .map { abs(frame.time - $0.element.time) }
+                    .min() ?? .infinity
+                return nearestGap < desiredGap * 0.75 ? (index, nearestGap) : nil
+            }
+            guard let replacement = crowded.min(by: { lhs, rhs in
+                if lhs.gap == rhs.gap {
+                    return output[lhs.index].qualityScore < output[rhs.index].qualityScore
+                }
+                return lhs.gap < rhs.gap
+            }) else { continue }
+
+            var comparison = output
+            comparison.remove(at: replacement.index)
+            let anchorGap = comparison.map { abs(anchor.time - $0.time) }.min() ?? .infinity
+            guard anchorGap > replacement.gap else { continue }
+            output[replacement.index] = anchor
+        }
+        return output
+    }
+
     private static func selectStoryDiverse(
         from candidates: [FrameDescriptor],
         sceneIndexByID: [Int: Int],
@@ -171,14 +241,12 @@ enum FrameSelection {
         if let scene = sceneIndexByID[candidate.id] {
             switch sceneUseCount[scene, default: 0] {
             case 0: sameScenePenalty = 0
-            case 1: sameScenePenalty = 0.13
-            default: sameScenePenalty = 0.32
+            case 1: sameScenePenalty = 0.10
+            default: sameScenePenalty = 0.22
             }
         } else {
             sameScenePenalty = 0
         }
-        // Time is intentionally absent: chronological spread is achieved by
-        // scene diversity, not by reserving slots for low-value timestamps.
         return quality * 0.72 + novelty * 0.48 - sameScenePenalty
     }
 
