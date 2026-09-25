@@ -26,7 +26,7 @@ GitHub's 1 MB recommendation.
 
 ## Links shown in the app and documentation
 
-- Developer: [xao](https://github.com/ixiehao)
+- Developer: [ixiehao](https://github.com/ixiehao)
 - Repository: <https://github.com/ixiehao/ShotTessera>
 - Releases: <https://github.com/ixiehao/ShotTessera/releases/latest>
 - Feedback: <https://github.com/ixiehao/ShotTessera/issues/new/choose>

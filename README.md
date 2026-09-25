@@ -55,7 +55,7 @@ All frame analysis and export happen on your Mac. ShotTessera has no account, te
 
 ## Project and feedback
 
-- Developer: [xao](https://github.com/ixiehao)
+- Developer: [ixiehao](https://github.com/ixiehao)
 - Source, downloads, and release notes: [github.com/ixiehao/ShotTessera](https://github.com/ixiehao/ShotTessera)
 - Feedback and feature ideas: [open a GitHub issue](https://github.com/ixiehao/ShotTessera/issues/new/choose)
 - What changed: [CHANGELOG.md](CHANGELOG.md) · Privacy promise: [PRIVACY.md](PRIVACY.md) · Product naming: [docs/NAMING.md](docs/NAMING.md)

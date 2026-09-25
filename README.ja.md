@@ -55,7 +55,7 @@ brew install --cask ixiehao/tap/shottessera
 
 ## プロジェクトとフィードバック
 
-- 開発者：[xao](https://github.com/ixiehao)
+- 開発者：[ixiehao](https://github.com/ixiehao)
 - ソース、ダウンロード、リリースノート：[github.com/ixiehao/ShotTessera](https://github.com/ixiehao/ShotTessera)
 - 不具合報告・提案：[GitHub Issue を作成](https://github.com/ixiehao/ShotTessera/issues/new/choose)
 - 更新履歴：[CHANGELOG.md](CHANGELOG.md) · プライバシー：[PRIVACY.md](PRIVACY.md) · 命名規約：[docs/NAMING.md](docs/NAMING.md)

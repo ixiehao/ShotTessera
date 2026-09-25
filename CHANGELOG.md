@@ -143,7 +143,7 @@ available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/r
 - Source, landscape, square, portrait, and common aspect layouts; aspect and
   width use matching dropdown panels.
 - Batch processing, live previews, PNG/JPG, timecodes, and filename titles.
-- The About panel links to developer xao, the project, and feedback.
+- The About panel links to developer ixiehao, the project, and feedback.
 
 ### 中文
 
@@ -151,7 +151,7 @@ available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/r
 - 支持 English、中文、日本語；语言选择更易点击。
 - 支持横屏、方屏、竖屏及常见比例；比例和宽度均使用统一的下拉选择面板。
 - 支持批量视频、实时预览、PNG/JPG、时间码和文件标题水印。
-- “关于”页提供开发者 xao、项目主页和反馈入口。
+- “关于”页提供开发者 ixiehao、项目主页和反馈入口。
 
 ### 日本語
 
@@ -160,4 +160,4 @@ available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/r
 - 元動画、横長、正方形、縦長などの比率に対応。比率と幅を統一した
   ドロップダウンで選択可能。
 - 複数動画、リアルタイムプレビュー、PNG/JPG、時刻表示、ファイル名タイトルに対応。
-- 「情報」画面から開発者 xao、プロジェクト、フィードバックを確認可能。
+- 「情報」画面から開発者 ixiehao、プロジェクト、フィードバックを確認可能。

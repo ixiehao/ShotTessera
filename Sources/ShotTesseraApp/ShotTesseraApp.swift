@@ -35,7 +35,7 @@ private enum AboutCredits {
             credits.append(NSAttributedString(string: text, attributes: attributes))
         }
 
-        appendBody("\(language.text("about.developer")) · xao\n")
+        appendBody("\(language.text("about.developer")) · ixiehao\n")
         appendLink("github.com/ixiehao/ShotTessera\n", destination: ProjectLinks.repository)
         appendLink(language.text("about.feedback"), destination: ProjectLinks.issues)
         if let availableUpdate {
