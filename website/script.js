@@ -63,7 +63,7 @@ Object.assign(translations.ja, {
   eyebrow: "昔の動画を、もう一度見つけやすく", heroTitle: "すべての動画に<br />思い出の地図を。",
   heroSummary: "フォルダに表示されるのは、たいてい動画ごとに一枚のサムネイルだけです。ShotTessera は大切な場面を一枚に並べ、動画を開く前に何が映っているか分かるようにします。",
   heroDownload: "macOS 版をダウンロード", viewSource: "GitHub でプロジェクトを見る <span aria-hidden=\"true\">↗</span>",
-  compatibility: "macOS 13 以降 · Apple Silicon / Intel 対応 · 無料・オープンソース", productCaption: "ShotTessera 日本語ガイド",
+  compatibility: "macOS 13 以降 · Apple Silicon / Intel 対応 · 無料・オープンソース", productCaption: "ShotTessera 日本語インターフェース",
   workflowEyebrow: "3 つの簡単なステップ", workflowTitle: "動画を追加。場面を選ぶ。画像を保存。",
   stepOneTitle: "動画を追加", stepOneText: "一本の動画、家族の動画数本、またはフォルダごと追加できます。",
   stepTwoTitle: "大切な場面を見る", stepTwoText: "まずはスマート選択を使用。残したい一コマがあるときは、タイムラインで正確に選べます。",
@@ -79,9 +79,9 @@ Object.assign(translations.ja, {
   ctaEyebrow: "思い出の瞬間を探してみませんか？", ctaTitle: "動画ライブラリを、もっと見やすく。", ctaDownload: "最新版を入手", ctaGithub: "GitHub でフォロー ↗"
 });
 const localizedVisualAssets = {
-  en: { product: "assets/install-guide-en.jpg", productAlt: "ShotTessera installation guide in English", guide: "assets/install-guide-en.jpg", guideAlt: "ShotTessera installation guide in English" },
-  zh: { product: "assets/app-launch-screen.png", productAlt: "ShotTessera Chinese application workspace", guide: "assets/install-guide-zh.jpg", guideAlt: "ShotTessera 中文安装说明" },
-  ja: { product: "assets/install-guide-ja.jpg", productAlt: "ShotTessera インストールガイド", guide: "assets/install-guide-ja.jpg", guideAlt: "ShotTessera インストールガイド" }
+  en: { product: "assets/workspace-en.png", productAlt: "ShotTessera workspace in English", guide: "assets/install-guide-en.jpg", guideAlt: "ShotTessera installation guide in English" },
+  zh: { product: "assets/workspace-zh.png", productAlt: "ShotTessera 中文工作区", guide: "assets/install-guide-zh.jpg", guideAlt: "ShotTessera 中文安装说明" },
+  ja: { product: "assets/workspace-ja.png", productAlt: "ShotTessera 日本語ワークスペース", guide: "assets/install-guide-ja.jpg", guideAlt: "ShotTessera インストールガイド" }
 };
 function activateLanguage(language) {
   document.documentElement.lang = language === "zh" ? "zh-CN" : language;
