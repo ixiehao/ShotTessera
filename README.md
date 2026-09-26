@@ -16,6 +16,12 @@
 | --- | --- | --- | --- |
 | Add one video or queue several. | Detect cuts and avoid black, blurry, and duplicate frames; inspect alternatives when needed. | Preview 3×3 to 8×8 grids while each storyboard is built. | Save a PNG or JPG beside the source video. |
 
+### See the workflow
+
+The real app moves from a finished storyboard to the manual frame editor, where you can locate a moment on the visual timeline and choose a better candidate before saving.
+
+![ShotTessera moves from its workspace to the manual frame editor, showing the storyboard, visual timeline, and candidate gallery](docs/assets/video-to-storyboard-demo.gif)
+
 ## Features
 
 - Detects meaningful scene changes and prioritises usable frames containing faces or people.
