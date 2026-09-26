@@ -7,18 +7,21 @@ available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/r
 
 ### English
 
+- Hotfix: corrected appearance switching so text, settings, and controls immediately use the matching semantic colours in Light and Dark mode, including the Manual Frame Editor.
 - Optimised the AVFoundation and Vision pipeline for macOS 27: batch precise frame extraction, reuse Vision previews, and avoid redundant decoding.
 - Added adaptive 3 × 3 / 4 × 4 low-resolution broad scans with full-resolution final-frame retrieval, while preserving the existing visual-quality rules.
 - Added text-region-first screening with OCR fallback to keep title cards and warnings out without penalising ordinary subtitles.
 
 ### 中文
 
+- 热修复：修正显示模式切换；浅色与深色模式下的文字、设置项和控件会立即使用匹配的语义颜色，“手动选择画面”窗口也已同步。
 - 借助 macOS 27 的 AVFoundation 与 Vision 调度能力优化处理管线：批量精确取帧、复用 Vision 预览，并减少重复解码。
 - 为 3 × 3 / 4 × 4 增加自适应低分辨率粗筛与最终高分辨率回读，同时保持既有画质判断规则。
 - 新增“文字区域优先、OCR 回退”的筛选方式：继续拦截封面和警告图，不误伤普通字幕。
 
 ### 日本語
 
+- 修正：表示モード切り替えを修正しました。ライト／ダークで文字・設定項目・コントロールが直ちに正しいセマンティックカラーへ切り替わり、手動フレーム選択画面にも適用されます。
 - macOS 27 の AVFoundation と Vision の実行特性を活かし、精密フレーム抽出のバッチ化、Vision プレビューの再利用、重複デコードの削減を行いました。
 - 3 × 3 / 4 × 4 では低解像度の粗い走査と最終フレームの高解像度取得を適応的に行い、既存の画質判定を維持します。
 - テキスト領域の検出を優先し、必要時のみ OCR にフォールバックすることで、通常の字幕を避けつつ表紙・警告画面を除外します。
