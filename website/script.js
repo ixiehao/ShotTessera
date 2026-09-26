@@ -79,9 +79,9 @@ Object.assign(translations.ja, {
   ctaEyebrow: "思い出の瞬間を探してみませんか？", ctaTitle: "動画ライブラリを、もっと見やすく。", ctaDownload: "最新版を入手", ctaGithub: "GitHub でフォロー ↗"
 });
 const localizedVisualAssets = {
-  en: { product: "assets/workspace-en.png", productAlt: "ShotTessera workspace in English", workflow: "assets/manual-en.png", workflowAlt: "ShotTessera manual frame selection in English", guide: "assets/install-guide-en.jpg", guideAlt: "ShotTessera installation guide in English" },
-  zh: { product: "assets/workspace-zh.png", productAlt: "ShotTessera 中文工作区", workflow: "assets/manual-zh.png", workflowAlt: "ShotTessera 中文手动选帧界面", guide: "assets/install-guide-zh.jpg", guideAlt: "ShotTessera 中文安装说明" },
-  ja: { product: "assets/workspace-ja.png", productAlt: "ShotTessera 日本語ワークスペース", workflow: "assets/workflow-ja.png", workflowAlt: "ShotTessera の日本語ワークスペース", guide: "assets/install-guide-ja.jpg", guideAlt: "ShotTessera インストールガイド" }
+  en: { product: "assets/workspace-en.webp", productAlt: "ShotTessera workspace in English", workflow: "assets/manual-en.webp", workflowAlt: "ShotTessera manual frame selection in English", guide: "assets/install-guide-en.jpg", guideAlt: "ShotTessera installation guide in English" },
+  zh: { product: "assets/workspace-zh.webp", productAlt: "ShotTessera 中文工作区", workflow: "assets/manual-zh.webp", workflowAlt: "ShotTessera 中文手动选帧界面", guide: "assets/install-guide-zh.jpg", guideAlt: "ShotTessera 中文安装说明" },
+  ja: { product: "assets/workspace-ja.webp", productAlt: "ShotTessera 日本語ワークスペース", workflow: "assets/workflow-ja.webp", workflowAlt: "ShotTessera の日本語ワークスペース", guide: "assets/install-guide-ja.jpg", guideAlt: "ShotTessera インストールガイド" }
 };
 function activateLanguage(language) {
   document.documentElement.lang = language === "zh" ? "zh-CN" : language;
