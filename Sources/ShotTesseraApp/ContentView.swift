@@ -161,6 +161,13 @@ struct ContentView: View {
             .background(appBackground)
         }
         .environment(\.locale, language.locale)
+        // `preferredColorScheme` updates the hosting window, but its semantic
+        // `Color.primary` / `Color.secondary` values can briefly keep the
+        // previous system appearance when a user switches this in-app setting.
+        // Supply the resolved scheme to the entire content tree as well, so
+        // every label, picker and ButtonStyle changes foreground colour in the
+        // same render pass as our custom light/dark surfaces.
+        .environment(\.colorScheme, resolvedAppearance == .light ? .light : .dark)
         .preferredColorScheme(appearance.preferredColorScheme)
         .onAppear {
             model.language = language
@@ -1838,6 +1845,9 @@ private struct ManualFrameEditorWindowPresenter: NSViewRepresentable {
                     onApply(requestValue, frames)
                     self?.closeEditor()
                 }
+                // Keep semantic SwiftUI foreground colours in lockstep with
+                // the AppKit title-bar appearance for this separate window.
+                .environment(\.colorScheme, colorScheme)
                 .preferredColorScheme(colorScheme)
             )
             editorWindow = window
