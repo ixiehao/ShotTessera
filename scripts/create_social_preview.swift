@@ -106,11 +106,11 @@ private func render(caseStudy: NSImage, compact: Bool) throws -> Data {
     stroke(NSRect(x: 54, y: 88, width: 1172, height: 464), color: color(0.48, 0.76, 1, 0.24), width: 1, radius: 28)
 
     fill(NSRect(x: 90, y: 474, width: 82, height: 27), color: color(0.13, 0.48, 0.66), radius: 13.5)
-    drawText("v0.2.3", in: NSRect(x: 90, y: 480, width: 82, height: 14), size: 12, weight: .bold, color: .white, alignment: .center)
+    drawText("macOS", in: NSRect(x: 90, y: 480, width: 82, height: 14), size: 12, weight: .bold, color: .white, alignment: .center)
     drawText("ShotTessera", in: NSRect(x: 90, y: 410, width: 360, height: 48), size: 42, weight: .bold, color: color(0.93, 0.97, 1))
-    drawText("Turn video into storyboards", in: NSRect(x: 90, y: 367, width: 390, height: 31), size: 23, weight: .semibold, color: color(0.72, 0.86, 1))
-    drawText("Smart selection first. Fine-tune any frame.", in: NSRect(x: 90, y: 322, width: 390, height: 22), size: 16, weight: .medium, color: color(0.60, 0.76, 0.93))
-    drawText("macOS · Fully local · Real owner-shot case", in: NSRect(x: 90, y: 293, width: 410, height: 18), size: 14, weight: .medium, color: color(0.40, 0.88, 0.91))
+    drawText("Make every video easy to browse", in: NSRect(x: 90, y: 367, width: 390, height: 31), size: 22, weight: .semibold, color: color(0.72, 0.86, 1))
+    drawText("Smart selection, precise control, local export.", in: NSRect(x: 90, y: 322, width: 390, height: 22), size: 16, weight: .medium, color: color(0.60, 0.76, 0.93))
+    drawText("Native macOS · Your footage stays on your Mac", in: NSRect(x: 90, y: 293, width: 410, height: 18), size: 14, weight: .medium, color: color(0.40, 0.88, 0.91))
 
     let caseRect = NSRect(x: 490, y: compact ? 135 : 122, width: 690, height: compact ? 388 : 405)
     fill(caseRect, color: color(0, 0, 0, 0.30), radius: 20)
@@ -121,7 +121,7 @@ private func render(caseStudy: NSImage, compact: Bool) throws -> Data {
     stroke(caseRect, color: color(0.58, 0.87, 1, 0.35), width: 1.5, radius: 20)
 
     drawText(
-        compact ? "Real footage → 3 × 3 storyboard" : "Real footage transformed on your Mac",
+        compact ? "Real workspace · manual control" : "A real ShotTessera workspace",
         in: NSRect(x: 90, y: 154, width: 360, height: 44),
         size: compact ? 18 : 20,
         weight: .semibold,

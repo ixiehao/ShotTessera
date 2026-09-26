@@ -2,13 +2,13 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-![プロジェクト所有者が撮影した湖上映像から ShotTessera が九分割の絵コンテを生成するアニメーション](docs/assets/video-to-storyboard-demo.gif)
+![プロジェクト所有者が許可した湖上映像を処理する ShotTessera の日本語ワークスペース](docs/assets/readme-workspace-ja.png)
 
 **動画ワンクリック・スクリーンショットモンタージュ（ShotTessera）** は、動画から代表的なフレームを選び、一枚の見やすい絵コンテ画像にまとめるネイティブ macOS アプリです。
 
 **まずスマート選択、必要なコマだけ手動調整。すべてローカルで完結します。**
 
-> **最新リリース：**[v0.2.8 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.8) · macOS 13 以降 · Apple Silicon / Intel Mac
+> **最新リリース：**[v0.2.9 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.9) · macOS 13 以降 · Apple Silicon / Intel Mac
 
 ## 一枚で分かる仕組み
 
@@ -41,7 +41,7 @@ brew install --cask ixiehao/tap/shottessera
 
 ## 安全にインストールする
 
-![macOS 初心者向けの三段階インストールガイド](docs/assets/install-guide-en.jpg)
+![macOS 初心者向けの三段階インストールガイド](docs/assets/install-guide-ja.jpg)
 
 1. ダウンロードした `.dmg` をダブルクリックし、**视频一键截屏拼图.app** を「アプリケーション」へドラッグします。
 2. コピー完了後、DMG は取り出しまたは削除できます。これはインストーラーなので、インストール済みアプリは削除されません。

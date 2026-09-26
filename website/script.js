@@ -79,17 +79,19 @@ Object.assign(translations.ja, {
   ctaEyebrow: "思い出の瞬間を探してみませんか？", ctaTitle: "動画ライブラリを、もっと見やすく。", ctaDownload: "最新版を入手", ctaGithub: "GitHub でフォロー ↗"
 });
 const localizedVisualAssets = {
-  en: { product: "assets/workspace-en.png", productAlt: "ShotTessera workspace in English", guide: "assets/install-guide-en.jpg", guideAlt: "ShotTessera installation guide in English" },
-  zh: { product: "assets/workspace-zh.png", productAlt: "ShotTessera 中文工作区", guide: "assets/install-guide-zh.jpg", guideAlt: "ShotTessera 中文安装说明" },
-  ja: { product: "assets/workspace-ja.png", productAlt: "ShotTessera 日本語ワークスペース", guide: "assets/install-guide-ja.jpg", guideAlt: "ShotTessera インストールガイド" }
+  en: { product: "assets/workspace-en.png", productAlt: "ShotTessera workspace in English", workflow: "assets/manual-en.png", workflowAlt: "ShotTessera manual frame selection in English", guide: "assets/install-guide-en.jpg", guideAlt: "ShotTessera installation guide in English" },
+  zh: { product: "assets/workspace-zh.png", productAlt: "ShotTessera 中文工作区", workflow: "assets/manual-zh.png", workflowAlt: "ShotTessera 中文手动选帧界面", guide: "assets/install-guide-zh.jpg", guideAlt: "ShotTessera 中文安装说明" },
+  ja: { product: "assets/workspace-ja.png", productAlt: "ShotTessera 日本語ワークスペース", workflow: "assets/workflow-ja.png", workflowAlt: "ShotTessera の日本語ワークスペース", guide: "assets/install-guide-ja.jpg", guideAlt: "ShotTessera インストールガイド" }
 };
 function activateLanguage(language) {
   document.documentElement.lang = language === "zh" ? "zh-CN" : language;
   document.querySelectorAll("[data-i18n]").forEach((node) => { node.innerHTML = translations[language][node.dataset.i18n]; });
   const visuals = localizedVisualAssets[language];
   const product = document.querySelector(".localized-product");
+  const workflow = document.querySelector(".localized-workflow");
   const guide = document.querySelector(".localized-guide");
   if (product) { product.src = visuals.product; product.alt = visuals.productAlt; }
+  if (workflow) { workflow.src = visuals.workflow; workflow.alt = visuals.workflowAlt; }
   if (guide) { guide.src = visuals.guide; guide.alt = visuals.guideAlt; }
   document.querySelectorAll("[data-lang]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.lang === language)));
   localStorage.setItem("shottessera-language", language);

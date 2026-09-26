@@ -2,13 +2,13 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-![自摄船行湖面视频经 ShotTessera 智能选帧生成九宫格分镜图](docs/assets/video-to-storyboard-demo.gif)
+![ShotTessera 中文工作区正在处理项目作者授权的船行湖面示例视频](docs/assets/readme-workspace-zh.png)
 
 **视频一键截屏拼图（ShotTessera）** 是一款原生 macOS 应用：从视频中挑选有代表性的画面，拼成一张干净的分镜图。
 
 **先智能选帧，再手动微调；全程本地完成。**
 
-> **最新版：**[v0.2.8 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.8) · macOS 13+ · Apple Silicon 与 Intel Mac
+> **最新版：**[v0.2.9 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.9) · macOS 13+ · Apple Silicon 与 Intel Mac
 
 ## 一张图看懂功能
 
@@ -41,7 +41,7 @@ brew install --cask ixiehao/tap/shottessera
 
 ## 安全安装
 
-![适合新手的 macOS 三步安装图文说明](docs/assets/install-guide-en.jpg)
+![适合新手的 macOS 三步安装图文说明](docs/assets/install-guide-zh.jpg)
 
 1. 双击下载的 `.dmg`，将 **视频一键截屏拼图.app** 拖进“应用程序”。
 2. 复制完成后可推出或删除 DMG；它只是安装包，不会删除已经安装的应用。
