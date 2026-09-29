@@ -1,19 +1,28 @@
-@preconcurrency import AVFoundation
+import AVFoundation
 import CoreGraphics
 import Foundation
-@preconcurrency import OSLog
+import OSLog
+
+/// OSSignposter predates Swift's Sendable annotations. Its methods are used
+/// only for diagnostic intervals, and Apple's signposting API is designed for
+/// concurrent producers; keep that boundary explicit for the Swift 5.10 CI
+/// compiler without making the extraction pipeline main-actor-bound.
+private final class FrameExtractionSignposter: @unchecked Sendable {
+    let value: OSSignposter
+
+    init(category: String) {
+        value = OSSignposter(
+            subsystem: Bundle.main.bundleIdentifier ?? "com.shottessera.app",
+            category: category
+        )
+    }
+}
 
 /// A compact candidate sampler used only after a person opens the manual
 /// adjuster. The normal storyboard path remains a single, fast analysis pass.
 enum ManualFrameExtractor {
-    private static let candidateBatchSignposter = OSSignposter(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.shottessera.app",
-        category: "CandidateSampling"
-    )
-    private static let sharpnessBatchSignposter = OSSignposter(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.shottessera.app",
-        category: "FrameRefinement"
-    )
+    private static let candidateBatchSignposter = FrameExtractionSignposter(category: "CandidateSampling")
+    private static let sharpnessBatchSignposter = FrameExtractionSignposter(category: "FrameRefinement")
 
     /// Around a proposed moment, compare the surrounding decoded frames and
     /// retain the one with the strongest fine detail. Three frames on each side
@@ -127,9 +136,9 @@ enum ManualFrameExtractor {
         compressionQuality: CGFloat
     ) async throws -> [CapturedFrame] {
         guard !frames.isEmpty else { return [] }
-        let batchInterval = sharpnessBatchSignposter.beginInterval("selectedFrameRefinement")
+        let batchInterval = sharpnessBatchSignposter.value.beginInterval("selectedFrameRefinement")
         defer {
-            sharpnessBatchSignposter.endInterval("selectedFrameRefinement", batchInterval)
+            sharpnessBatchSignposter.value.endInterval("selectedFrameRefinement", batchInterval)
         }
 
         let frameRate = await nominalFrameRate(for: asset)
@@ -161,11 +170,11 @@ enum ManualFrameExtractor {
             planIndices: Array(plans.indices),
             frameRate: frameRate
         ) { _, plan in plan.primaryTimes }
-        let primaryInterval = sharpnessBatchSignposter.beginInterval("selectedFramePrimaryDecode")
+        let primaryInterval = sharpnessBatchSignposter.value.beginInterval("selectedFramePrimaryDecode")
         var bestByPlan = Array<SharpnessProbe?>(repeating: nil, count: plans.count)
         do {
             defer {
-                sharpnessBatchSignposter.endInterval("selectedFramePrimaryDecode", primaryInterval)
+                sharpnessBatchSignposter.value.endInterval("selectedFramePrimaryDecode", primaryInterval)
             }
             bestByPlan = try await scoreSharpnessBatch(
                 using: analysisGenerator,
@@ -190,9 +199,9 @@ enum ManualFrameExtractor {
             frameRate: frameRate
         ) { _, plan in plan.localRecoveryTimes }
         if !localRecoveryRequests.requestedTimes.isEmpty {
-            let recoveryInterval = sharpnessBatchSignposter.beginInterval("selectedFrameRecoveryDecode")
+            let recoveryInterval = sharpnessBatchSignposter.value.beginInterval("selectedFrameRecoveryDecode")
             defer {
-                sharpnessBatchSignposter.endInterval("selectedFrameRecoveryDecode", recoveryInterval)
+                sharpnessBatchSignposter.value.endInterval("selectedFrameRecoveryDecode", recoveryInterval)
             }
             bestByPlan = try await scoreSharpnessBatch(
                 using: analysisGenerator,
@@ -215,11 +224,11 @@ enum ManualFrameExtractor {
             planIndices: plans.indices.filter { bestByPlan[$0] != nil },
             frameRate: frameRate
         ) { index, _ in bestByPlan[index].map { [$0.time] } ?? [] }
-        let finalInterval = sharpnessBatchSignposter.beginInterval("selectedFrameFinalDecode")
+        let finalInterval = sharpnessBatchSignposter.value.beginInterval("selectedFrameFinalDecode")
         let finalImages: [FinalSharpnessImage?]
         do {
             defer {
-                sharpnessBatchSignposter.endInterval("selectedFrameFinalDecode", finalInterval)
+                sharpnessBatchSignposter.value.endInterval("selectedFrameFinalDecode", finalInterval)
             }
             finalImages = try await decodeFinalSharpnessBatch(
                 using: finalGenerator,
@@ -486,9 +495,9 @@ enum ManualFrameExtractor {
         compressionQuality: CGFloat
     ) async throws -> [CapturedFrame] {
         guard !frames.isEmpty else { return [] }
-        let interval = sharpnessBatchSignposter.beginInterval("presentationFrameDecode")
+        let interval = sharpnessBatchSignposter.value.beginInterval("presentationFrameDecode")
         defer {
-            sharpnessBatchSignposter.endInterval("presentationFrameDecode", interval)
+            sharpnessBatchSignposter.value.endInterval("presentationFrameDecode", interval)
         }
 
         let generator = AVAssetImageGenerator(asset: asset)
@@ -541,9 +550,9 @@ enum ManualFrameExtractor {
         count: Int,
         batch: Int
     ) async throws -> [CapturedFrame] {
-        let wholeBatch = candidateBatchSignposter.beginInterval("manualCandidateBatch")
+        let wholeBatch = candidateBatchSignposter.value.beginInterval("manualCandidateBatch")
         defer {
-            candidateBatchSignposter.endInterval("manualCandidateBatch", wholeBatch)
+            candidateBatchSignposter.value.endInterval("manualCandidateBatch", wholeBatch)
         }
 
         let asset = AVURLAsset(url: videoURL)
@@ -604,9 +613,9 @@ enum ManualFrameExtractor {
         )
         var bestByPlan = Array<CandidateProbe?>(repeating: nil, count: plans.count)
         do {
-            let primaryInterval = candidateBatchSignposter.beginInterval("manualCandidatePrimaryDecode")
+            let primaryInterval = candidateBatchSignposter.value.beginInterval("manualCandidatePrimaryDecode")
             defer {
-                candidateBatchSignposter.endInterval("manualCandidatePrimaryDecode", primaryInterval)
+                candidateBatchSignposter.value.endInterval("manualCandidatePrimaryDecode", primaryInterval)
             }
             bestByPlan = try await scoreCandidateBatch(
                 using: generator,
@@ -632,10 +641,10 @@ enum ManualFrameExtractor {
                 frameRate: frameRate
             )
             if !localRecoveryBatch.requestedTimes.isEmpty {
-                let recoveryInterval = candidateBatchSignposter.beginInterval("manualCandidateRecoveryDecode")
+                let recoveryInterval = candidateBatchSignposter.value.beginInterval("manualCandidateRecoveryDecode")
                 do {
                     defer {
-                        candidateBatchSignposter.endInterval("manualCandidateRecoveryDecode", recoveryInterval)
+                        candidateBatchSignposter.value.endInterval("manualCandidateRecoveryDecode", recoveryInterval)
                     }
                     bestByPlan = try await scoreCandidateBatch(
                         using: generator,
@@ -663,9 +672,9 @@ enum ManualFrameExtractor {
                 frameRate: frameRate
             )
             if !wideRecoveryBatch.requestedTimes.isEmpty {
-                let recoveryInterval = candidateBatchSignposter.beginInterval("manualCandidateWideRecoveryDecode")
+                let recoveryInterval = candidateBatchSignposter.value.beginInterval("manualCandidateWideRecoveryDecode")
                 defer {
-                    candidateBatchSignposter.endInterval("manualCandidateWideRecoveryDecode", recoveryInterval)
+                    candidateBatchSignposter.value.endInterval("manualCandidateWideRecoveryDecode", recoveryInterval)
                 }
                 bestByPlan = try await scoreCandidateBatch(
                     using: generator,

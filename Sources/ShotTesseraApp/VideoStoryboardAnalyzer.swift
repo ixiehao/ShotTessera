@@ -1,16 +1,27 @@
-@preconcurrency import AVFoundation
+import AVFoundation
 import CoreGraphics
 import Foundation
-@preconcurrency import OSLog
+import OSLog
 import Vision
+
+/// OSSignposter has no Sendable annotation in the macOS 14 SDK. Its API is
+/// safe for concurrent event producers, so contain that legacy annotation at
+/// the diagnostic boundary instead of weakening the analyser's Sendable model.
+private final class StoryboardSignposter: @unchecked Sendable {
+    let value: OSSignposter
+
+    init(category: String) {
+        value = OSSignposter(
+            subsystem: Bundle.main.bundleIdentifier ?? "com.shottessera.app",
+            category: category
+        )
+    }
+}
 
 /// Stateless analysis worker. Keeping this as a value type lets Swift verify
 /// that it is safe to pass into the detached generation task.
 struct VideoStoryboardAnalyzer: Sendable {
-    private static let pipelineSignposter = OSSignposter(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.shottessera.app",
-        category: "StoryboardAnalysis"
-    )
+    private static let pipelineSignposter = StoryboardSignposter(category: "StoryboardAnalysis")
     // The analysis thumbnail is also the storyboard source. Reusing it avoids a
     // second random-access decode pass after selection, which is the slowest part
     // of many H.264/HEVC files.
@@ -30,9 +41,9 @@ struct VideoStoryboardAnalyzer: Sendable {
         progress: @escaping @Sendable (Double) -> Void,
         onPreviewFrame: @escaping @Sendable (CapturedFrame, Int, Int) async -> Void
     ) async throws -> StoryboardResult {
-        let wholePipeline = Self.pipelineSignposter.beginInterval("storyboardPipeline")
+        let wholePipeline = Self.pipelineSignposter.value.beginInterval("storyboardPipeline")
         defer {
-            Self.pipelineSignposter.endInterval("storyboardPipeline", wholePipeline)
+            Self.pipelineSignposter.value.endInterval("storyboardPipeline", wholePipeline)
         }
 
         let asset = AVURLAsset(url: videoURL)
@@ -65,9 +76,9 @@ struct VideoStoryboardAnalyzer: Sendable {
         // same tolerant keyframe behavior and macOS 13 compatibility.
         defer { analysisGenerator.cancelAllCGImageGeneration() }
         do {
-            let broadDecode = Self.pipelineSignposter.beginInterval("storyboardBroadDecode")
+            let broadDecode = Self.pipelineSignposter.value.beginInterval("storyboardBroadDecode")
             defer {
-                Self.pipelineSignposter.endInterval("storyboardBroadDecode", broadDecode)
+                Self.pipelineSignposter.value.endInterval("storyboardBroadDecode", broadDecode)
             }
             for await result in analysisGenerator.images(for: requestedTimes) {
                 try Task.checkCancellation()
@@ -127,9 +138,9 @@ struct VideoStoryboardAnalyzer: Sendable {
         let visionWorkCount = max(1, personCandidates.count + textCandidates.count)
         var completedVisionWork = 0
         do {
-            let visionInterval = Self.pipelineSignposter.beginInterval("storyboardVision")
+            let visionInterval = Self.pipelineSignposter.value.beginInterval("storyboardVision")
             defer {
-                Self.pipelineSignposter.endInterval("storyboardVision", visionInterval)
+                Self.pipelineSignposter.value.endInterval("storyboardVision", visionInterval)
             }
 
             // Boundary and low-detail candidates often need both person and OCR
@@ -186,9 +197,9 @@ struct VideoStoryboardAnalyzer: Sendable {
         var captured: [CapturedFrame] = []
         let finalFrameEdge = analysisMaximumEdge(gridSide: gridSide, outputWidth: outputWidth)
         do {
-            let finalRefinement = Self.pipelineSignposter.beginInterval("storyboardFinalRefinement")
+            let finalRefinement = Self.pipelineSignposter.value.beginInterval("storyboardFinalRefinement")
             defer {
-                Self.pipelineSignposter.endInterval("storyboardFinalRefinement", finalRefinement)
+                Self.pipelineSignposter.value.endInterval("storyboardFinalRefinement", finalRefinement)
             }
 
             let fallbackByID = Dictionary(uniqueKeysWithValues: selected.compactMap { descriptor -> (Int, CapturedFrame)? in
