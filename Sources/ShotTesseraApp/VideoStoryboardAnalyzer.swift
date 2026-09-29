@@ -1,7 +1,7 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
-import OSLog
+@preconcurrency import OSLog
 import Vision
 
 /// Stateless analysis worker. Keeping this as a value type lets Swift verify

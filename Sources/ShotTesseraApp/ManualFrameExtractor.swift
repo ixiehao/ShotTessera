@@ -1,7 +1,7 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreGraphics
 import Foundation
-import OSLog
+@preconcurrency import OSLog
 
 /// A compact candidate sampler used only after a person opens the manual
 /// adjuster. The normal storyboard path remains a single, fast analysis pass.

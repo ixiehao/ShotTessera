@@ -1,5 +1,5 @@
 import AppKit
-import AVFoundation
+@preconcurrency import AVFoundation
 import AVKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -2724,12 +2724,13 @@ private struct ManualFrameEditor: View {
         let gridSide = max(1, Int(Double(selectionLimit).squareRoot().rounded()))
         let requestedCount = min(72, max(24, selectionLimit * 3))
         let batch = candidateBatch
+        let source = sourceURL
 
         // Sampling candidates may decode dozens of frames. Keep that work off the
         // main actor so scrolling, selection and the progress state stay responsive.
         let samplingTask = Task.detached(priority: .userInitiated) {
             try await ManualFrameExtractor.captureCandidates(
-                from: sourceURL,
+                from: source,
                 gridSide: gridSide,
                 outputWidth: outputWidth,
                 count: requestedCount,

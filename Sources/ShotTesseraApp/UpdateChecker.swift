@@ -1,5 +1,5 @@
 import AppKit
-import Foundation
+@preconcurrency import Foundation
 import SwiftUI
 
 /// This checks public release metadata only. No media or personal data leaves the Mac.
