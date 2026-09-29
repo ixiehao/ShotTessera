@@ -17,6 +17,6 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
       - name: Build universal release executable
-        run: swift build -c release --arch arm64 --arch x86_64
+        run: swift build -c release --arch arm64 --arch x86_64 -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
       - name: Run tests
         run: swift test

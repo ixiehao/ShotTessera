@@ -8,7 +8,7 @@
 
 **まずスマート選択、必要なコマだけ手動調整。すべてローカルで完結します。**
 
-> **最新リリース：**[v0.2.9 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.9) · macOS 13 以降 · Apple Silicon / Intel Mac
+> **最新リリース：**[v0.2.10 Universal DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.10) · macOS 13 以降 · Apple Silicon / Intel Mac
 
 ## 一枚で分かる仕組み
 

@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import XCTest
 @testable import ShotTesseraApp
 
@@ -117,6 +118,36 @@ final class ReleaseRegressionTests: XCTestCase {
         XCTAssertEqual(VideoFailure.classify(StoryboardError.unsupportedCodec, language: .english).kind, .needsTranscoding)
         XCTAssertEqual(VideoFailure.classify(StoryboardError.noExportData, language: .english).kind, .retryable)
         XCTAssertEqual(VideoFailure.classify(CocoaError(.fileReadNoPermission), language: .english).kind, .retryable)
+    }
+
+    func testSystemMediaFailuresOfferOnlyUsefulRecoveryActions() {
+        func avError(_ code: AVError.Code) -> NSError {
+            NSError(domain: AVFoundationErrorDomain, code: code.rawValue)
+        }
+
+        XCTAssertEqual(
+            VideoFailure.classify(avError(.decoderNotFound), language: .english).kind,
+            .needsTranscoding
+        )
+        XCTAssertEqual(
+            VideoFailure.classify(avError(.fileFormatNotRecognized), language: .english).kind,
+            .needsTranscoding
+        )
+        for code in [AVError.Code.fileFailedToParse, .failedToLoadMediaData, .contentIsProtected] {
+            let failure = VideoFailure.classify(avError(code), language: .english)
+            XCTAssertEqual(failure.kind, .permanent)
+            XCTAssertFalse(failure.isRetryable)
+        }
+        XCTAssertEqual(
+            VideoFailure.classify(CocoaError(.fileReadCorruptFile), language: .english).kind,
+            .permanent
+        )
+        // A mounted volume or granted permission can change after the first
+        // attempt, so access failures intentionally retain the Retry action.
+        XCTAssertEqual(
+            VideoFailure.classify(CocoaError(.fileReadNoPermission), language: .english).kind,
+            .retryable
+        )
     }
 
     @MainActor

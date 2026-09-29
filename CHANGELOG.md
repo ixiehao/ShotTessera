@@ -3,6 +3,32 @@
 All notable user-facing changes are recorded here. Stable releases remain
 available on the [GitHub Releases page](https://github.com/ixiehao/ShotTessera/releases).
 
+## v0.2.10
+
+### English
+
+- Made the first storyboard preview progressive: a stable grid appears immediately, representative frames fill their final positions in order, then sharper captures replace them in place.
+- Made Manual Frame Editor candidate loading and Apply faster by decoding the chosen moment first and expanding to nearby frames only when motion blur, a dissolve, or a decode failure needs recovery.
+- Kept action-heavy material protected: low-clarity and movement-risk frames still use the full local sharpness search instead of trading image quality for speed.
+- Improved Manual Frame Editor reliability and accessibility: it remembers its size and position, no longer offers an unrecoverable minimise action, keeps selections when appearance changes, and supports Escape / Command–Return shortcuts.
+- Improved media-error guidance and added stricter universal-build, concurrency, and release verification gates for contributors.
+
+### 中文
+
+- 首次生成分镜图改为渐进预览：网格会立即出现，代表性画面按最终位置依次填入，随后在原位替换为更清晰的精修画面。
+- 手动选帧候选区与“应用并保存”改为先取目标时刻；仅在运动模糊、转场或取帧失败时才扩展到相邻帧，减少不必要的解码等待。
+- 动作素材继续受到保护：清晰度不足或存在运动风险的画面仍会执行完整局部清晰度搜索，不以速度牺牲画质。
+- 提升手动选帧窗口的可靠性与辅助功能：记住位置和尺寸，移除无法恢复的最小化操作，切换外观时保留选择，并支持 Escape / Command–Return 快捷键。
+- 改进媒体错误提示，并为贡献者增加更严格的通用构建、并发与发布验证流程。
+
+### 日本語
+
+- 最初の絵コンテ表示を段階的にしました。安定したグリッドをすぐに表示し、代表フレームを最終位置へ順に配置した後、より鮮明なフレームへその場で置き換えます。
+- 手動フレーム選択の候補読み込みと「適用して保存」を高速化しました。まず指定時刻を取得し、モーションブラー、ディゾルブ、取得失敗時だけ近傍フレームを追加で調べます。
+- 動きの多い素材の品質は維持します。低鮮明度または動きのリスクがあるフレームでは、速度優先で画質を落とさず、従来どおり局所的な鮮明度検索を行います。
+- 手動フレーム選択ウインドウの信頼性とアクセシビリティを改善しました。位置とサイズを記憶し、復元不能な最小化操作をなくし、表示モード変更時も選択を保持し、Escape / Command–Return に対応します。
+- メディアエラーの案内を改善し、貢献者向けに Universal Build、並行性、リリース検証をより厳格にしました。
+
 ## v0.2.9
 
 ### English

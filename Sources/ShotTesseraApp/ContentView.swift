@@ -23,6 +23,36 @@ private struct ManualFrameEditorRequest: Identifiable {
     let outputWidth: Int
 }
 
+/// Stable, index-addressable storage for a storyboard that is still being
+/// built. Keeping empty slots (instead of appending images) makes a 4 × 4
+/// preview stay in reading order while later, sharper versions replace the
+/// same card.
+struct ProgressivePreviewSlots<Frame> {
+    private(set) var slots: [Frame?] = []
+
+    var filledCount: Int { slots.reduce(into: 0) { if $1 != nil { $0 += 1 } } }
+
+    mutating func reset(total: Int) {
+        slots = Array(repeating: nil, count: max(0, total))
+    }
+
+    @discardableResult
+    mutating func replace(_ frame: Frame, at index: Int, total: Int) -> Bool {
+        let safeTotal = max(0, total)
+        guard index >= 0, index < safeTotal else { return false }
+        if slots.count != safeTotal {
+            reset(total: safeTotal)
+        }
+        slots[index] = frame
+        return true
+    }
+}
+
+fileprivate struct LivePreviewFrame: Identifiable {
+    let id = UUID()
+    let image: NSImage
+}
+
 struct ContentView: View {
     @StateObject private var model: StoryboardViewModel
     @EnvironmentObject private var updateChecker: UpdateChecker
@@ -1031,7 +1061,7 @@ final class StoryboardViewModel: ObservableObject {
     @Published var showTimestamps = false
     @Published var showTitleWatermark = false
     @Published var previewImage: NSImage?
-    @Published var livePreviewFrames: [NSImage] = []
+    @Published fileprivate private(set) var livePreviewSlots = ProgressivePreviewSlots<LivePreviewFrame>()
     @Published private(set) var activeGridSide = 4
     @Published private(set) var activeCardAspectRatio = 16.0 / 9.0
     @Published private(set) var activeJobIndex = 0
@@ -1065,6 +1095,8 @@ final class StoryboardViewModel: ObservableObject {
     }
 
     var hasVideos: Bool { !videoJobs.isEmpty }
+    fileprivate var livePreviewFrames: [LivePreviewFrame?] { livePreviewSlots.slots }
+    var livePreviewFrameCount: Int { livePreviewSlots.filledCount }
     var isBusy: Bool { isProcessing || isApplyingFrameAdjustments }
     var isSettingsLocked: Bool { (isProcessing && !isPaused) || isApplyingFrameAdjustments }
     var isQueueLocked: Bool { isProcessing || isApplyingFrameAdjustments }
@@ -1100,7 +1132,7 @@ final class StoryboardViewModel: ObservableObject {
         if isProcessing {
             let totalFrames = activeGridSide * activeGridSide
             let name = activeJobName.isEmpty ? t("default.video") : activeJobName
-            return t("status.processing", activeJobIndex + 1, max(1, activeJobCount), name, livePreviewFrames.count, totalFrames)
+            return t("status.processing", activeJobIndex + 1, max(1, activeJobCount), name, livePreviewFrameCount, totalFrames)
         }
         return previewImage == nil ? t("status.empty") : outputDescription
     }
@@ -1145,7 +1177,7 @@ final class StoryboardViewModel: ObservableObject {
         guard !isBusy else { return }
         videoJobs.removeAll()
         previewImage = nil
-        livePreviewFrames = []
+        livePreviewSlots.reset(total: 0)
         outputDescription = ""
         lastSavedURL = nil
         pendingData = nil
@@ -1207,16 +1239,26 @@ final class StoryboardViewModel: ObservableObject {
         isPauseRequested = false
         isPaused = false
         progress = 0
+        // Present the live grid immediately. This replaces a stale completed
+        // image or a blank stage before the first AVFoundation decode returns.
+        activeGridSide = gridSide
+        activeUsesSourceAspect = layoutAspect == .source
+        activeCardAspectRatio = layoutAspect.resolvedCardAspectRatio(sourceAspectRatio: nil)
+        livePreviewSlots.reset(total: gridSide * gridSide)
         lastSavedURL = nil
         pendingData = nil
         pendingSource = nil
         pendingFormat = nil
+        showError = false
+        errorMessage = ""
         if resetPreviews {
             completedPreviews = []
             previewImageStore = PreviewImageStore()
             previewLoadID = UUID()
             isLoadingPreview = false
             selectedPreviewIndex = 0
+            previewImage = nil
+            renderedFormat = nil
         }
         let analyzer = VideoStoryboardAnalyzer()
         let bridge = UIStateBridge(model: self, generationRunID: runID)
@@ -1261,7 +1303,7 @@ final class StoryboardViewModel: ObservableObject {
                             bridge.report(progress: value)
                         },
                         onPreviewFrame: { frame, frameIndex, totalFrames in
-                            bridge.appendPreview(frame, index: frameIndex, total: totalFrames)
+                            await bridge.appendPreview(frame, index: frameIndex, total: totalFrames)
                         }
                     )
                     let data = try StoryboardComposer.render(result: result, settings: currentSettings)
@@ -1298,7 +1340,7 @@ final class StoryboardViewModel: ObservableObject {
         for index in videoJobs.indices where videoJobs[index].state == .processing {
             videoJobs[index].state = .queued
         }
-        livePreviewFrames = []
+        livePreviewSlots.reset(total: 0)
         outputDescription = t("status.cancelled")
         Task { await control?.resume() }
     }
@@ -1319,7 +1361,7 @@ final class StoryboardViewModel: ObservableObject {
     fileprivate func markPausedAtCheckpoint() {
         isPaused = true
         isPauseRequested = false
-        livePreviewFrames = []
+        livePreviewSlots.reset(total: 0)
         outputDescription = t("status.paused")
     }
 
@@ -1337,7 +1379,7 @@ final class StoryboardViewModel: ObservableObject {
         activeGridSide = gridSide
         activeUsesSourceAspect = layoutAspect == .source
         activeCardAspectRatio = layoutAspect.resolvedCardAspectRatio(sourceAspectRatio: nil)
-        livePreviewFrames = []
+        livePreviewSlots.reset(total: gridSide * gridSide)
         progress = 0
         if videoJobs.indices.contains(jobIndex) { videoJobs[jobIndex].state = .processing }
         outputDescription = t("status.nowProcessing", source.lastPathComponent)
@@ -1348,8 +1390,11 @@ final class StoryboardViewModel: ObservableObject {
         if activeUsesSourceAspect {
             activeCardAspectRatio = StoryboardAspect.source.resolvedCardAspectRatio(sourceAspectRatio: frame.aspectRatio)
         }
-        livePreviewFrames.append(image)
-        progress = max(progress, 0.72 + 0.26 * Double(index) / Double(max(1, total)))
+        var slots = livePreviewSlots
+        guard slots.replace(LivePreviewFrame(image: image), at: index, total: total) else { return }
+        withAnimation(.easeOut(duration: 0.18)) {
+            livePreviewSlots = slots
+        }
     }
 
     @discardableResult
@@ -1431,7 +1476,7 @@ final class StoryboardViewModel: ObservableObject {
         generationControl = nil
         isPauseRequested = false
         isPaused = false
-        livePreviewFrames = []
+        livePreviewSlots.reset(total: 0)
         outputDescription = t("status.cancelled")
     }
 
@@ -1666,8 +1711,8 @@ private final class UIStateBridge: @unchecked Sendable {
         }
     }
 
-    func appendPreview(_ frame: CapturedFrame, index: Int, total: Int) {
-        Task { @MainActor [weak self] in
+    func appendPreview(_ frame: CapturedFrame, index: Int, total: Int) async {
+        await MainActor.run { [weak self] in
             guard let self, let model = self.model, self.acceptsCurrentGeneration(model) else { return }
             model.appendPreview(frame, index: index, total: total)
         }
@@ -1778,6 +1823,7 @@ private struct ManualFrameEditorWindowPresenter: NSViewRepresentable {
         private var currentRequestID: UUID?
         private weak var editorWindow: NSWindow?
         private var requestBinding: Binding<ManualFrameEditorRequest?>?
+        private var editorConfiguration: ManualFrameEditorConfiguration?
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -1802,6 +1848,9 @@ private struct ManualFrameEditorWindowPresenter: NSViewRepresentable {
             }
             guard currentRequestID != requestValue.id || editorWindow == nil else {
                 editorWindow?.appearance = Self.appKitAppearance(for: colorScheme)
+                editorWindow?.title = language.text("editor.title")
+                editorConfiguration?.colorScheme = colorScheme
+                editorConfiguration?.language = language
                 if editorWindow?.isMiniaturized == true {
                     editorWindow?.deminiaturize(nil)
                 }
@@ -1830,8 +1879,20 @@ private struct ManualFrameEditorWindowPresenter: NSViewRepresentable {
             window.minSize = NSSize(width: 1_000, height: 680)
             window.contentMinSize = NSSize(width: 1_000, height: 680)
             window.maxSize = NSSize(width: 16_384, height: 16_384)
-            window.center()
+            // Keep a deliberately resized/repositioned editor where the person
+            // left it.  Falling back to the centre only on a first launch also
+            // prevents a manual editor from reopening partly off-screen.
+            let autosaveName = "ShotTesseraManualFrameEditor"
+            window.setFrameAutosaveName(autosaveName)
+            if !window.setFrameUsingName(autosaveName) {
+                window.center()
+            }
             window.delegate = self
+            let configuration = ManualFrameEditorConfiguration(
+                colorScheme: colorScheme,
+                language: language
+            )
+            editorConfiguration = configuration
             window.contentView = NSHostingView(
                 rootView: ManualFrameEditor(
                     model: model,
@@ -1839,16 +1900,12 @@ private struct ManualFrameEditorWindowPresenter: NSViewRepresentable {
                     selectionLimit: requestValue.selectionLimit,
                     duration: requestValue.duration,
                     outputWidth: requestValue.outputWidth,
-                    language: language,
+                    configuration: configuration,
                     onClose: { [weak self] in self?.closeEditor() }
                 ) { [weak self] frames in
                     onApply(requestValue, frames)
                     self?.closeEditor()
                 }
-                // Keep semantic SwiftUI foreground colours in lockstep with
-                // the AppKit title-bar appearance for this separate window.
-                .environment(\.colorScheme, colorScheme)
-                .preferredColorScheme(colorScheme)
             )
             editorWindow = window
             NSApplication.shared.activate(ignoringOtherApps: true)
@@ -1862,6 +1919,7 @@ private struct ManualFrameEditorWindowPresenter: NSViewRepresentable {
         func windowWillClose(_ notification: Notification) {
             currentRequestID = nil
             editorWindow = nil
+            editorConfiguration = nil
             requestBinding?.wrappedValue = nil
         }
 
@@ -1873,10 +1931,26 @@ private struct ManualFrameEditorWindowPresenter: NSViewRepresentable {
             }
             editorWindow = nil
             currentRequestID = nil
+            editorConfiguration = nil
             window.delegate = nil
             window.close()
             requestBinding?.wrappedValue = nil
         }
+    }
+}
+
+/// A hosted editor window does not automatically receive the parent SwiftUI
+/// environment after it has been created. Keep the dynamic preferences in an
+/// observable value so an open editor updates without rebuilding the view and
+/// losing a person's in-progress selection.
+@MainActor
+private final class ManualFrameEditorConfiguration: ObservableObject {
+    @Published var colorScheme: ColorScheme
+    @Published var language: AppLanguage
+
+    init(colorScheme: ColorScheme, language: AppLanguage) {
+        self.colorScheme = colorScheme
+        self.language = language
     }
 }
 
@@ -1887,7 +1961,7 @@ private struct ManualFrameEditor: View {
     let selectionLimit: Int
     let duration: Double
     let outputWidth: Int
-    let language: AppLanguage
+    @ObservedObject var configuration: ManualFrameEditorConfiguration
     let onClose: () -> Void
     let onApply: ([CapturedFrame]) -> Void
     @State private var sampledCandidates: [CapturedFrame] = []
@@ -1909,6 +1983,10 @@ private struct ManualFrameEditor: View {
     @State private var isRefiningCurrentFrame = false
     @State private var isRefiningSelectedFrames = false
     @State private var previewCaptureTask: Task<Void, Never>?
+    @State private var selectedFrameRefinementTask: Task<[CapturedFrame], Error>?
+    @State private var applyPresentationTask: Task<Void, Never>?
+    @State private var selectedFrameRefinementToken: UUID?
+    @State private var operationError = ""
     @State private var player: AVPlayer?
     @State private var isScrubbingPreview = false
     @State private var nextManualFrameID = 1_000_000
@@ -1917,6 +1995,8 @@ private struct ManualFrameEditor: View {
     private func t(_ key: String, _ arguments: CVarArg...) -> String {
         language.text(key, arguments: arguments)
     }
+
+    private var language: AppLanguage { configuration.language }
 
     private var selectedFrames: [CapturedFrame] {
         candidates
@@ -1960,11 +2040,23 @@ private struct ManualFrameEditor: View {
             alignment: .topLeading
         )
         .accessibilityIdentifier("manual-frame-editor")
+        // The observable configuration keeps this independent AppKit window in
+        // sync with the parent workspace even while it remains open.
+        .environment(\.colorScheme, configuration.colorScheme)
+        .preferredColorScheme(configuration.colorScheme)
         .onAppear {
             loadCandidates()
             prepareVideoPreview()
         }
         .onDisappear(perform: cancelBackgroundWork)
+        .alert(t("alert.generation.title"), isPresented: Binding(
+            get: { !operationError.isEmpty },
+            set: { if !$0 { operationError = "" } }
+        )) {
+            Button(t("button.ok"), role: .cancel) { operationError = "" }
+        } message: {
+            Text(operationError)
+        }
     }
 
     private var editorToolbar: some View {
@@ -2080,6 +2172,13 @@ private struct ManualFrameEditor: View {
         }
         .buttonStyle(.plain)
         .disabled(!isSelected && selectedIDs.count >= selectionLimit)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(t("editor.candidates")) · \(TimestampFormatter.string(for: candidate.time))")
+        .accessibilityValue(
+            isSelected
+                ? "\(t("accessibility.selected")) \(selectionNumber ?? 0) / \(selectionLimit)"
+                : "0 / \(selectionLimit)"
+        )
     }
 
     private var editorFooter: some View {
@@ -2090,6 +2189,7 @@ private struct ManualFrameEditor: View {
                     .frame(width: 132, height: 36)
             }
             .buttonStyle(ManualFrameEditorActionButtonStyle(role: .regenerate))
+            .keyboardShortcut(.escape, modifiers: [])
 
             Spacer()
 
@@ -2106,6 +2206,7 @@ private struct ManualFrameEditor: View {
             }
             .buttonStyle(ManualFrameEditorActionButtonStyle(role: .smartSelect))
             .disabled(selectedIDs.count != selectionLimit || model.isApplyingFrameAdjustments || isRefiningSelectedFrames)
+            .keyboardShortcut(.return, modifiers: [.command])
             .accessibilityIdentifier("manual-frame-apply")
         }
         .padding(.horizontal, 20)
@@ -2215,6 +2316,8 @@ private struct ManualFrameEditor: View {
                         }
                     }
                     .accessibilityIdentifier("manual-frame-timeline")
+                    .accessibilityLabel(t("editor.timelineHint"))
+                    .accessibilityValue(previewTimeText)
 
                 HStack {
                     Text(TimestampFormatter.string(for: 0))
@@ -2529,6 +2632,8 @@ private struct ManualFrameEditor: View {
         let estimatedCellWidth = Double(max(1_920, outputWidth)) / Double(gridSide)
         let maximumEdge = CGFloat(min(1_280, max(480, estimatedCellWidth * 1.15)))
         isRefiningSelectedFrames = true
+        let token = UUID()
+        selectedFrameRefinementToken = token
 
         let refinement = Task.detached(priority: .userInitiated) {
             let asset = AVURLAsset(url: source)
@@ -2544,11 +2649,29 @@ private struct ManualFrameEditor: View {
             // the rest of a deliberate manual selection.
             return framesToApply.map { refinedByID[$0.id] ?? $0 }
         }
-        Task {
-            defer { isRefiningSelectedFrames = false }
-            guard let refinedFrames = try? await refinement.value else { return }
-            onApply(refinedFrames)
-            onClose()
+        selectedFrameRefinementTask = refinement
+        applyPresentationTask?.cancel()
+        applyPresentationTask = Task {
+            defer {
+                if selectedFrameRefinementToken == token {
+                    isRefiningSelectedFrames = false
+                    selectedFrameRefinementTask = nil
+                    applyPresentationTask = nil
+                    selectedFrameRefinementToken = nil
+                }
+            }
+            do {
+                let refinedFrames = try await refinement.value
+                // Closing the window or starting another operation invalidates
+                // this result. Never apply frames after a user has cancelled.
+                guard !Task.isCancelled, selectedFrameRefinementToken == token else { return }
+                onApply(refinedFrames)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, selectedFrameRefinementToken == token else { return }
+                operationError = (error as? StoryboardError)?.message(in: language) ?? error.localizedDescription
+            }
         }
     }
 
@@ -2638,6 +2761,9 @@ private struct ManualFrameEditor: View {
         smartSelectionTask?.cancel()
         smartSelectionPresentationTask?.cancel()
         previewCaptureTask?.cancel()
+        selectedFrameRefinementToken = nil
+        selectedFrameRefinementTask?.cancel()
+        applyPresentationTask?.cancel()
         player?.pause()
     }
 }
@@ -3130,28 +3256,32 @@ private struct ProgressiveStoryboardPreview: View {
     let gridSide: Int
     let cardAspectRatio: Double
     let language: AppLanguage
-    let frames: [NSImage]
+    let frames: [LivePreviewFrame?]
     let isLightAppearance: Bool
 
     var body: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: gridSide)
         let safeAspectRatio = min(3, max(1.0 / 3.0, cardAspectRatio))
+        let total = gridSide * gridSide
+        let filledCount = frames.reduce(into: 0) { if $1 != nil { $0 += 1 } }
+        let activePlaceholderIndex = frames.firstIndex { $0 == nil }
         VStack(spacing: 12) {
-            Text(language.text("preview.live", frames.count, gridSide * gridSide))
+            Text(language.text("preview.live", filledCount, total))
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
             LazyVGrid(columns: columns, spacing: 6) {
-                ForEach(0..<(gridSide * gridSide), id: \.self) { index in
+                ForEach(0..<total, id: \.self) { index in
                     ZStack {
-                        if frames.indices.contains(index) {
-                            Image(nsImage: frames[index])
+                        if let frame = frames.indices.contains(index) ? frames[index] : nil {
+                            Image(nsImage: frame.image)
                                 .resizable()
                                 .scaledToFill()
+                                .id(frame.id)
                                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
                         } else {
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(Color.white.opacity(index == frames.count ? 0.12 : 0.045))
-                            if index == frames.count {
+                                .fill(Color.white.opacity(index == activePlaceholderIndex ? 0.12 : 0.045))
+                            if index == activePlaceholderIndex {
                                 ProgressView().controlSize(.mini)
                             }
                         }
@@ -3170,7 +3300,7 @@ private struct ProgressiveStoryboardPreview: View {
                     .fill(Color.black.opacity(0.14))
             }
         }
-        .animation(.easeOut(duration: 0.16), value: frames.count)
+        .animation(.easeOut(duration: 0.18), value: filledCount)
     }
 }
 

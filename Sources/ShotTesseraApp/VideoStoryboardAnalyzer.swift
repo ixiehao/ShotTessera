@@ -28,7 +28,7 @@ struct VideoStoryboardAnalyzer: Sendable {
         gridSide: Int,
         outputWidth: Int,
         progress: @escaping @Sendable (Double) -> Void,
-        onPreviewFrame: @escaping @Sendable (CapturedFrame, Int, Int) -> Void
+        onPreviewFrame: @escaping @Sendable (CapturedFrame, Int, Int) async -> Void
     ) async throws -> StoryboardResult {
         let wholePipeline = Self.pipelineSignposter.beginInterval("storyboardPipeline")
         defer {
@@ -203,6 +203,21 @@ struct VideoStoryboardAnalyzer: Sendable {
                     )
                 )
             })
+
+            // The broad-scan frame is already a usable, chronological preview.
+            // Publish it before the optional presentation/sharpness work starts
+            // so the studio can render a stable grid immediately. The same slot
+            // is later replaced by the final captured frame below; this callback
+            // deliberately uses the selected descriptor's index rather than an
+            // append count, because a missing timestamp must never shift a card.
+            for (offset, descriptor) in selected.enumerated() {
+                try Task.checkCancellation()
+                if let fallback = fallbackByID[descriptor.id] {
+                    await onPreviewFrame(fallback, offset, targetCount)
+                }
+                await Task.yield()
+            }
+
             let refinementInputs = selected.compactMap { descriptor -> CapturedFrame? in
                 guard requiresExactRefinement(descriptor) else { return nil }
                 return fallbackByID[descriptor.id]
@@ -253,7 +268,6 @@ struct VideoStoryboardAnalyzer: Sendable {
                 guard let fallback = fallbackByID[descriptor.id] else { continue }
                 let frame = refinedByID[descriptor.id] ?? presentationByID[descriptor.id] ?? fallback
                 captured.append(frame)
-                onPreviewFrame(frame, captured.count, selected.count)
                 progress(0.72 + 0.26 * Double(offset + 1) / Double(selected.count))
                 // Yield so the main actor can present progressive cards, but do not
                 // add an artificial half-second delay to every video in a batch.
@@ -272,6 +286,15 @@ struct VideoStoryboardAnalyzer: Sendable {
                 captured.append(CapturedFrame(id: nextID, time: source.time, jpegData: source.jpegData, aspectRatio: source.aspectRatio))
                 nextID -= 1
             }
+        }
+
+        // Keep the visual order stable while replacing broad-scan cards with
+        // presentation-size or sharpness-refined captures. Export still receives
+        // only `captured`, so preview timing cannot alter the saved storyboard.
+        for (index, frame) in captured.enumerated() {
+            try Task.checkCancellation()
+            await onPreviewFrame(frame, index, targetCount)
+            await Task.yield()
         }
         progress(1)
         return StoryboardResult(frames: captured, sourceURL: videoURL, duration: duration)

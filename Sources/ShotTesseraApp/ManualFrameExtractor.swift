@@ -112,11 +112,13 @@ enum ManualFrameExtractor {
         return CapturedFrame(id: identifier, time: resolvedTime, jpegData: jpegData, aspectRatio: aspectRatio)
     }
 
-    /// Refines a selected manual set in two decoder batches: first score the
-    /// same +/- 3-frame neighbourhood used by `captureSharpestFrame`, then
-    /// decode only the winning moments at export size. Applying a 6 × 6 grid no
-    /// longer starts 36 independent generators while preserving the exact
-    /// sharpness formula and a per-frame fallback for damaged media.
+    /// Refines a selected manual set in decoder batches. Every chosen moment is
+    /// first sampled exactly at its centre; only a low-clarity centre receives
+    /// the same +/- 3-frame neighbourhood used by `captureSharpestFrame`.
+    /// Finally, the winning moment is decoded at export size. Applying a 6 × 6
+    /// grid therefore avoids spending seven exact seeks on an already crisp
+    /// card, while motion blur, dissolves, and failed centre decodes keep the
+    /// full sharpness recovery path.
     static func captureSharpestFrames(
         from asset: AVURLAsset,
         duration: Double,
@@ -132,12 +134,14 @@ enum ManualFrameExtractor {
 
         let frameRate = await nominalFrameRate(for: asset)
         let plans = frames.enumerated().map { offset, frame in
-            SharpnessPlan(
+            let centre = min(max(0, frame.time), max(0, duration - 0.001))
+            return SharpnessPlan(
                 index: offset,
                 identifier: frame.id,
-                centre: min(max(0, frame.time), max(0, duration - 0.001)),
-                comparisonTimes: sharpnessComparisonTimes(
-                    around: frame.time,
+                centre: centre,
+                primaryTimes: [centre],
+                localRecoveryTimes: sharpnessRecoveryTimes(
+                    around: centre,
                     duration: duration,
                     frameRate: frameRate
                 )
@@ -152,21 +156,49 @@ enum ManualFrameExtractor {
         analysisGenerator.requestedTimeToleranceAfter = .zero
         defer { analysisGenerator.cancelAllCGImageGeneration() }
 
-        let comparisonRequests = sharpnessRequestBatch(
+        let primaryRequests = sharpnessRequestBatch(
             plans: plans,
             planIndices: Array(plans.indices),
             frameRate: frameRate
-        ) { _, plan in plan.comparisonTimes }
-        let scoringInterval = sharpnessBatchSignposter.beginInterval("selectedFrameScoringDecode")
-        let bestByPlan: [SharpnessProbe?]
+        ) { _, plan in plan.primaryTimes }
+        let primaryInterval = sharpnessBatchSignposter.beginInterval("selectedFramePrimaryDecode")
+        var bestByPlan = Array<SharpnessProbe?>(repeating: nil, count: plans.count)
         do {
             defer {
-                sharpnessBatchSignposter.endInterval("selectedFrameScoringDecode", scoringInterval)
+                sharpnessBatchSignposter.endInterval("selectedFramePrimaryDecode", primaryInterval)
             }
             bestByPlan = try await scoreSharpnessBatch(
                 using: analysisGenerator,
-                requestBatch: comparisonRequests,
+                requestBatch: primaryRequests,
                 plans: plans,
+                existingBest: bestByPlan,
+                frameRate: frameRate
+            )
+        }
+
+        // A clear central frame is already the most faithful representation of
+        // the moment the person selected. Fast movement, cross-dissolves, and
+        // damaged samples are the exceptions: they get the exact same local
+        // neighbourhood as before, so the optimization never intentionally
+        // trades away an action peak for fewer decodes.
+        let recoveryPlanIndices = plans.indices.filter {
+            bestByPlan[$0].map { candidateNeedsRecovery($0.metrics) } ?? true
+        }
+        let localRecoveryRequests = sharpnessRequestBatch(
+            plans: plans,
+            planIndices: recoveryPlanIndices,
+            frameRate: frameRate
+        ) { _, plan in plan.localRecoveryTimes }
+        if !localRecoveryRequests.requestedTimes.isEmpty {
+            let recoveryInterval = sharpnessBatchSignposter.beginInterval("selectedFrameRecoveryDecode")
+            defer {
+                sharpnessBatchSignposter.endInterval("selectedFrameRecoveryDecode", recoveryInterval)
+            }
+            bestByPlan = try await scoreSharpnessBatch(
+                using: analysisGenerator,
+                requestBatch: localRecoveryRequests,
+                plans: plans,
+                existingBest: bestByPlan,
                 frameRate: frameRate
             )
         }
@@ -197,6 +229,16 @@ enum ManualFrameExtractor {
             )
         }
 
+        // This is intentionally a local, ephemeral accounting value. It is
+        // exercised by tests to keep the decoder budget honest; it is neither
+        // persisted nor reported outside the process.
+        _ = selectedRefinementDiagnostics(
+            itemCount: plans.count,
+            primaryRequests: primaryRequests.requestedTimes.count,
+            localRecoveryRequests: localRecoveryRequests.requestedTimes.count,
+            finalRequests: finalRequests.requestedTimes.count
+        )
+
         var output: [CapturedFrame] = []
         output.reserveCapacity(plans.count)
         for (index, plan) in plans.enumerated() {
@@ -225,12 +267,14 @@ enum ManualFrameExtractor {
         let index: Int
         let identifier: Int
         let centre: Double
-        let comparisonTimes: [Double]
+        let primaryTimes: [Double]
+        let localRecoveryTimes: [Double]
     }
 
     private struct SharpnessProbe {
         let image: CGImage
         let time: Double
+        let metrics: PixelMetrics
         let score: Float
     }
 
@@ -275,9 +319,13 @@ enum ManualFrameExtractor {
         using generator: AVAssetImageGenerator,
         requestBatch: SharpnessRequestBatch,
         plans: [SharpnessPlan],
+        existingBest: [SharpnessProbe?],
         frameRate: Double
     ) async throws -> [SharpnessProbe?] {
-        var bestByPlan = Array<SharpnessProbe?>(repeating: nil, count: plans.count)
+        var bestByPlan = existingBest
+        if bestByPlan.count != plans.count {
+            bestByPlan = Array<SharpnessProbe?>(repeating: nil, count: plans.count)
+        }
         guard !requestBatch.requestedTimes.isEmpty else { return bestByPlan }
 
         for await result in generator.images(for: requestBatch.requestedTimes) {
@@ -288,13 +336,16 @@ enum ManualFrameExtractor {
             let resolvedTime = actualTime.isValid && actualTime.seconds.isFinite
                 ? actualTime.seconds
                 : requestedTime.seconds
-            let score = autoreleasepool { () -> Float in
-                let metrics = PixelMetrics.make(from: image)
-                return visualClarityScore(metrics)
-            }
+            let metrics = autoreleasepool { PixelMetrics.make(from: image) }
+            let score = visualClarityScore(metrics)
             for index in planIndices {
                 let distancePenalty = Float(abs(resolvedTime - plans[index].centre)) * 0.0001
-                let probe = SharpnessProbe(image: image, time: resolvedTime, score: score - distancePenalty)
+                let probe = SharpnessProbe(
+                    image: image,
+                    time: resolvedTime,
+                    metrics: metrics,
+                    score: score - distancePenalty
+                )
                 if probe.score > (bestByPlan[index]?.score ?? -.greatestFiniteMagnitude) {
                     bestByPlan[index] = probe
                 }
@@ -357,6 +408,27 @@ enum ManualFrameExtractor {
             }
         }
         return times
+    }
+
+    /// The centre is always decoded in the primary batch. Recovery therefore
+    /// requests only its neighbours, retaining the historical +/- 3-frame
+    /// search window without duplicating the centre request.
+    static func sharpnessRecoveryTimes(
+        around time: Double,
+        duration: Double,
+        frameRate: Double,
+        neighbourhoodFrames: Int = 3
+    ) -> [Double] {
+        let allTimes = sharpnessComparisonTimes(
+            around: time,
+            duration: duration,
+            frameRate: frameRate,
+            neighbourhoodFrames: neighbourhoodFrames
+        )
+        let safeRate = frameRate.isFinite && frameRate > 1 ? frameRate : 30
+        let centre = min(max(0, time), max(0, duration - 0.001))
+        let centreKey = candidateRequestKey(for: centre, frameRate: safeRate)
+        return allTimes.filter { candidateRequestKey(for: $0, frameRate: safeRate) != centreKey }
     }
 
     /// Decodes one user-positioned frame for the manual editor's preview
@@ -504,12 +576,13 @@ enum ManualFrameExtractor {
             return CandidatePlan(
                 identifier: -((batch + 1) * 10_000 + index + 1),
                 requestedTime: requestedTime,
-                primaryTimes: candidateComparisonTimes(
+                primaryTimes: [requestedTime],
+                localRecoveryTimes: candidateRecoveryTimes(
                     around: requestedTime,
                     duration: duration,
                     frameRate: frameRate
                 ),
-                recoveryTimes: candidateRecoveryTimes(
+                wideRecoveryTimes: candidateWideRecoveryTimes(
                     around: requestedTime,
                     duration: duration,
                     frameRate: frameRate
@@ -518,10 +591,10 @@ enum ManualFrameExtractor {
         }
 
         // AVFoundation can decode a timeline of requested moments in one
-        // stream. The former implementation created 3–5 independent exact
-        // seeks per card; on a 72-card gallery that meant hundreds of serial
-        // decoder restarts. Retain every sampling time and score unchanged,
-        // while letting the framework batch their delivery.
+        // stream. Start with the intended moment for every card, then spend
+        // neighbouring seeks only where the centre is actually diffuse. That
+        // keeps ordinary gallery loads light, while fast action, dissolves, and
+        // missing centre decodes still receive the same two-stage recovery.
         let allPlanIndices = Array(plans.indices)
         let primaryBatch = candidateRequestBatch(
             plans: plans,
@@ -544,33 +617,75 @@ enum ManualFrameExtractor {
             )
         }
 
-        // Preserve the existing selective recovery behaviour. Only cards whose
-        // strongest primary result still looks diffuse receive the two wider
-        // probes, but those probes are also delivered as one decoder batch.
+        // Only cards whose centre still looks diffuse receive the two nearby
+        // probes, delivered as one decoder batch. A separate wide pass below
+        // remains available when the nearby probe still lands in a dissolve.
         let recoveryPlanIndices = plans.indices.filter {
-            bestByPlan[$0].map { candidateNeedsRecovery($0.metrics) } == true
+            bestByPlan[$0].map { candidateNeedsRecovery($0.metrics) } ?? true
         }
+        var localRecoveryBatch = CandidateRequestBatch.empty
         if !recoveryPlanIndices.isEmpty {
-            let recoveryBatch = candidateRequestBatch(
+            localRecoveryBatch = candidateRequestBatch(
                 plans: plans,
                 planIndices: recoveryPlanIndices,
-                selecting: \.recoveryTimes,
+                selecting: \.localRecoveryTimes,
                 frameRate: frameRate
             )
-            do {
+            if !localRecoveryBatch.requestedTimes.isEmpty {
                 let recoveryInterval = candidateBatchSignposter.beginInterval("manualCandidateRecoveryDecode")
+                do {
+                    defer {
+                        candidateBatchSignposter.endInterval("manualCandidateRecoveryDecode", recoveryInterval)
+                    }
+                    bestByPlan = try await scoreCandidateBatch(
+                        using: generator,
+                        requestBatch: localRecoveryBatch,
+                        plans: plans,
+                        existingBest: bestByPlan,
+                        frameRate: frameRate
+                    )
+                }
+            }
+        }
+
+        // A short cross-dissolve can remain diffuse after the nearby 0.3–0.45s
+        // probe. Retain the wider 10-frame escape hatch, but only for those
+        // unresolved cards instead of applying it to a whole gallery.
+        let wideRecoveryPlanIndices = plans.indices.filter {
+            bestByPlan[$0].map { candidateNeedsRecovery($0.metrics) } ?? true
+        }
+        var wideRecoveryBatch = CandidateRequestBatch.empty
+        if !wideRecoveryPlanIndices.isEmpty {
+            wideRecoveryBatch = candidateRequestBatch(
+                plans: plans,
+                planIndices: wideRecoveryPlanIndices,
+                selecting: \.wideRecoveryTimes,
+                frameRate: frameRate
+            )
+            if !wideRecoveryBatch.requestedTimes.isEmpty {
+                let recoveryInterval = candidateBatchSignposter.beginInterval("manualCandidateWideRecoveryDecode")
                 defer {
-                    candidateBatchSignposter.endInterval("manualCandidateRecoveryDecode", recoveryInterval)
+                    candidateBatchSignposter.endInterval("manualCandidateWideRecoveryDecode", recoveryInterval)
                 }
                 bestByPlan = try await scoreCandidateBatch(
                     using: generator,
-                    requestBatch: recoveryBatch,
+                    requestBatch: wideRecoveryBatch,
                     plans: plans,
                     existingBest: bestByPlan,
                     frameRate: frameRate
                 )
             }
         }
+
+        // The structure is intentionally not persisted or surfaced to users.
+        // It gives tests a deterministic way to guard this decoder budget
+        // without introducing telemetry into a local-first app.
+        _ = candidateSamplingDiagnostics(
+            itemCount: plans.count,
+            primaryRequests: primaryBatch.requestedTimes.count,
+            localRecoveryRequests: localRecoveryBatch.requestedTimes.count,
+            wideRecoveryRequests: wideRecoveryBatch.requestedTimes.count
+        )
 
         var frames: [CapturedFrame] = []
         frames.reserveCapacity(sampleCount)
@@ -599,7 +714,8 @@ enum ManualFrameExtractor {
         let identifier: Int
         let requestedTime: Double
         let primaryTimes: [Double]
-        let recoveryTimes: [Double]
+        let localRecoveryTimes: [Double]
+        let wideRecoveryTimes: [Double]
     }
 
     private struct CandidateProbe {
@@ -612,6 +728,8 @@ enum ManualFrameExtractor {
     private struct CandidateRequestBatch {
         let requestedTimes: [CMTime]
         let planIndicesByRequestKey: [Int64: [Int]]
+
+        static let empty = CandidateRequestBatch(requestedTimes: [], planIndicesByRequestKey: [:])
     }
 
     private static func candidateRequestBatch(
@@ -692,8 +810,8 @@ enum ManualFrameExtractor {
     /// A compact three-point probe is intentionally wider than the final
     /// export's +/- 3-frame refinement. A dissolve commonly lasts half a
     /// second or more; a 3-frame probe would keep all three samples inside the
-    /// same ghost image. We still decode only three 640px images per gallery
-    /// card, but place the outer probes on either side of a normal transition.
+    /// same ghost image. Candidate sampling now decodes its centre first and
+    /// uses only the two outer probes for low-clarity cards.
     static func candidateComparisonTimes(
         around time: Double,
         duration: Double,
@@ -713,11 +831,31 @@ enum ManualFrameExtractor {
         return times
     }
 
+    /// The centre has already been decoded by the primary candidate pass, so
+    /// this helper returns just the outer sides of `candidateComparisonTimes`.
+    /// Keeping it separately testable prevents a later optimization from
+    /// accidentally reintroducing duplicate exact seeks for every card.
+    static func candidateRecoveryTimes(
+        around time: Double,
+        duration: Double,
+        frameRate: Double
+    ) -> [Double] {
+        let allTimes = candidateComparisonTimes(
+            around: time,
+            duration: duration,
+            frameRate: frameRate
+        )
+        let safeRate = frameRate.isFinite && frameRate > 1 ? frameRate : 30
+        let centre = min(max(0, time), max(0, duration - 0.001))
+        let centreKey = candidateRequestKey(for: centre, frameRate: safeRate)
+        return allTimes.filter { candidateRequestKey(for: $0, frameRate: safeRate) != centreKey }
+    }
+
     /// Recovery probes are deliberately separate from the normal three-frame
     /// pass: they are evaluated only for a likely ghost frame. Keeping the
     /// offset at ten frames preserves the represented scene while reaching the
     /// stable side of a short cross-dissolve or a fast action blur.
-    static func candidateRecoveryTimes(
+    static func candidateWideRecoveryTimes(
         around time: Double,
         duration: Double,
         frameRate: Double
@@ -740,9 +878,12 @@ enum ManualFrameExtractor {
     /// gate than simple sharpness. This only controls whether the two bounded
     /// recovery probes run; the highest visual-quality frame still wins.
     static func candidateNeedsRecovery(_ metrics: PixelMetrics) -> Bool {
-        visualClarityScore(metrics) < 0.48
-            || metrics.focusedEdgeRatio < 0.38
-            || (metrics.sharpness < 0.095 && metrics.contrast < 0.14)
+        // This is intentionally a little conservative. It is cheaper to run
+        // two neighbouring probes for a borderline action card than to let a
+        // high-contrast motion trail look "sharp enough" at 48 × 48.
+        visualClarityScore(metrics) < 0.55
+            || metrics.focusedEdgeRatio < 0.45
+            || (metrics.sharpness < 0.115 && metrics.contrast < 0.16)
     }
 
     private static func visualClarityScore(_ metrics: PixelMetrics) -> Float {
@@ -763,6 +904,77 @@ enum ManualFrameExtractor {
               let rate = try? await track.load(.nominalFrameRate),
               rate.isFinite, rate > 1 else { return 30 }
         return Double(rate)
+    }
+
+    /// A deterministic accounting helper for tests and local profiling. It is
+    /// not written to disk, included in exports, or sent anywhere.
+    static func candidateSamplingDiagnostics(
+        itemCount: Int,
+        primaryRequests: Int,
+        localRecoveryRequests: Int,
+        wideRecoveryRequests: Int
+    ) -> FrameDecodeDiagnostics {
+        FrameDecodeDiagnostics(
+            itemCount: itemCount,
+            primaryRequests: primaryRequests,
+            localRecoveryRequests: localRecoveryRequests,
+            wideRecoveryRequests: wideRecoveryRequests,
+            finalRequests: 0,
+            // Before centre-first probing, every gallery card started with a
+            // fixed three-point exact sweep. The optional wide recovery was
+            // already conditional and is deliberately excluded from this
+            // conservative baseline.
+            fixedBaselineRequestsPerItem: 3
+        )
+    }
+
+    /// A deterministic accounting helper for selected-frame apply. The prior
+    /// batch path always decoded seven analysis probes plus one final image per
+    /// selected frame; the new centre-first path should stay below that budget
+    /// unless every card genuinely needs blur recovery.
+    static func selectedRefinementDiagnostics(
+        itemCount: Int,
+        primaryRequests: Int,
+        localRecoveryRequests: Int,
+        finalRequests: Int
+    ) -> FrameDecodeDiagnostics {
+        FrameDecodeDiagnostics(
+            itemCount: itemCount,
+            primaryRequests: primaryRequests,
+            localRecoveryRequests: localRecoveryRequests,
+            wideRecoveryRequests: 0,
+            finalRequests: finalRequests,
+            fixedBaselineRequestsPerItem: 8
+        )
+    }
+}
+
+/// Pure in-memory decoder-budget accounting. This exists so performance
+/// regressions can be caught in XCTest without collecting user activity or
+/// introducing telemetry into ShotTessera's local-first processing model.
+struct FrameDecodeDiagnostics: Equatable, Sendable {
+    let itemCount: Int
+    let primaryRequests: Int
+    let localRecoveryRequests: Int
+    let wideRecoveryRequests: Int
+    let finalRequests: Int
+    let fixedBaselineRequestsPerItem: Int
+
+    var totalRequests: Int {
+        primaryRequests + localRecoveryRequests + wideRecoveryRequests + finalRequests
+    }
+
+    var fixedBaselineRequestCount: Int {
+        max(0, itemCount) * max(0, fixedBaselineRequestsPerItem)
+    }
+
+    var avoidedRequests: Int {
+        max(0, fixedBaselineRequestCount - totalRequests)
+    }
+
+    var avoidedRequestRatio: Double {
+        guard fixedBaselineRequestCount > 0 else { return 0 }
+        return Double(avoidedRequests) / Double(fixedBaselineRequestCount)
     }
 }
 

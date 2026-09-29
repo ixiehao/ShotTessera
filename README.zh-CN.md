@@ -8,7 +8,7 @@
 
 **先智能选帧，再手动微调；全程本地完成。**
 
-> **最新版：**[v0.2.9 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.9) · macOS 13+ · Apple Silicon 与 Intel Mac
+> **最新版：**[v0.2.10 通用 DMG](https://github.com/ixiehao/ShotTessera/releases/tag/v0.2.10) · macOS 13+ · Apple Silicon 与 Intel Mac
 
 ## 一张图看懂功能
 

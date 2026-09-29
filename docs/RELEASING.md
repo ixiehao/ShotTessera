@@ -5,8 +5,19 @@ Releases.
 
 1. Update `CFBundleShortVersionString` and `CFBundleVersion` in
    `Packaging/Info.plist`, then update `CHANGELOG.md`.
-2. Run `swift test`, then compile once with complete concurrency checking and
-   warnings treated as errors before running `./scripts/package_dmg.sh`.
+2. Run the same verification gate used by CI before running
+   `./scripts/package_dmg.sh`:
+
+   ```sh
+   swift test
+   swift build -c release --arch arm64 --arch x86_64 \
+     -Xswiftc -strict-concurrency=complete \
+     -Xswiftc -warnings-as-errors
+   ```
+
+   This catches strict-concurrency regressions before a universal DMG is
+   assembled. The release build must complete without project warnings; inspect
+   any toolchain-level architecture warning rather than suppressing it.
 3. The packaging script derives the filename from `Packaging/Info.plist`,
    verifies the signature and DMG, remounts the final compressed artifact,
    checks its Finder metadata and `/Applications` link, confirms both `arm64`

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 enum ExportFormat: String, CaseIterable, Identifiable, Sendable {
@@ -287,14 +288,43 @@ struct VideoFailure: Equatable {
         VideoFailure(message: message, kind: .needsTranscoding)
     }
 
+    static func permanent(_ message: String) -> VideoFailure {
+        VideoFailure(message: message, kind: .permanent)
+    }
+
     static func classify(_ error: Error, language: AppLanguage) -> VideoFailure {
-        guard let error = error as? StoryboardError else { return .retryable(error.localizedDescription) }
-        let message = error.message(in: language)
-        switch error {
-        case .unsupportedCodec: return .needsTranscoding(message)
-        case .unreadableVideo, .noUsableFrames: return VideoFailure(message: message, kind: .permanent)
-        case .noExportData: return .retryable(message)
+        if let error = error as? StoryboardError {
+            let message = error.message(in: language)
+            switch error {
+            case .unsupportedCodec: return .needsTranscoding(message)
+            case .unreadableVideo, .noUsableFrames: return .permanent(message)
+            case .noExportData: return .retryable(message)
+            }
         }
+
+        // AVFoundation can fail after a container has already been accepted by
+        // the file picker. Retrying a missing decoder or an unparseable movie
+        // merely repeats the same work, so make the recovery path actionable:
+        // offer transcoding for codec/container limits and do not offer a retry
+        // for permanently unreadable or protected media. Transient I/O errors
+        // remain retryable because an external drive, permission, or file copy
+        // can change while the app is open.
+        let nsError = error as NSError
+        if nsError.domain == AVFoundationErrorDomain {
+            switch AVError.Code(rawValue: nsError.code) {
+            case .decoderNotFound, .fileFormatNotRecognized:
+                return .needsTranscoding(language.text("error.unsupportedCodec"))
+            case .fileFailedToParse, .failedToLoadMediaData, .contentIsProtected:
+                return .permanent(language.text("error.unreadableVideo"))
+            default:
+                break
+            }
+        }
+        if nsError.domain == NSCocoaErrorDomain,
+           CocoaError.Code(rawValue: nsError.code) == .fileReadCorruptFile {
+            return .permanent(language.text("error.unreadableVideo"))
+        }
+        return .retryable(error.localizedDescription)
     }
 
     var needsTranscoding: Bool { kind == .needsTranscoding }

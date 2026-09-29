@@ -12,6 +12,21 @@ Thank you for improving ShotTessera.
 
 By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+### Local verification
+
+Before opening a pull request, run:
+
+```sh
+swift test
+swift build -c release --arch arm64 --arch x86_64
+```
+
+For changes to decoding, rendering, export, pause/cancel, or manual selection,
+also verify one non-private H.264 or HEVC file manually: complete an export,
+cancel an active run, and retry a temporary output-folder failure. Do not upload
+the source file with the issue or pull request; record only the macOS version,
+Mac type, container/codec, duration, and the reproduced result.
+
 ## 中文
 
 感谢你改进 ShotTessera。
@@ -24,6 +39,17 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 参与本项目即表示你同意遵守[行为准则](CODE_OF_CONDUCT.md)。
 
+### 本地验证
+
+提交 Pull Request 前，请运行：
+
+```sh
+swift test
+swift build -c release --arch arm64 --arch x86_64
+```
+
+如果改动了解码、渲染、导出、暂停/取消或手动选帧，请再使用一个非私人的 H.264 或 HEVC 视频手动验证：完成一次导出、取消运行中的任务，并在暂时无法写入输出文件夹后执行重试。请不要在 Issue 或 Pull Request 中上传源视频；只需记录 macOS 版本、Mac 类型、封装/编码格式、时长和复现结果。
+
 ## 日本語
 
 ShotTessera の改善にご協力いただき、ありがとうございます。
@@ -35,3 +61,14 @@ ShotTessera の改善にご協力いただき、ありがとうございます�
 5. コードを送る前に `swift test` を実行してください。選択、描画、書き出し、ローカライズに関する変更には、適切なテストまたは手動検証の注記を含めてください。
 
 参加することで、[行動規範](CODE_OF_CONDUCT.md)に従うことに同意したものとします。
+
+### ローカルでの確認
+
+Pull Request を開く前に、以下を実行してください。
+
+```sh
+swift test
+swift build -c release --arch arm64 --arch x86_64
+```
+
+デコード、描画、書き出し、一時停止/キャンセル、手動選択に変更を加えた場合は、私人的ではない H.264 または HEVC の動画を 1 本使い、書き出しの完了、実行中のキャンセル、一時的な出力フォルダーの書き込み失敗からの再試行を手動で確認してください。Issue や Pull Request に元動画はアップロードせず、macOS のバージョン、Mac の種類、コンテナ/コーデック、尺、再現結果のみを記録してください。

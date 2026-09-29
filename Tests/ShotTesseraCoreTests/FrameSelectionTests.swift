@@ -6,6 +6,25 @@ import XCTest
 @testable import ShotTesseraApp
 
 final class FrameSelectionTests: XCTestCase {
+    func testProgressivePreviewSlotsKeepGridOrderWhenFramesAreReplaced() {
+        var slots = ProgressivePreviewSlots<Int>()
+        slots.reset(total: 4)
+
+        XCTAssertEqual(slots.slots.count, 4)
+        XCTAssertEqual(slots.filledCount, 0)
+        XCTAssertTrue(slots.replace(30, at: 2, total: 4))
+        XCTAssertTrue(slots.replace(10, at: 0, total: 4))
+        XCTAssertEqual(slots.slots.map { $0 ?? -1 }, [10, -1, 30, -1])
+
+        // A refined capture replaces the broad-scan fallback in place rather
+        // than moving later cards forward.
+        XCTAssertTrue(slots.replace(31, at: 2, total: 4))
+        XCTAssertEqual(slots.slots.map { $0 ?? -1 }, [10, -1, 31, -1])
+        XCTAssertEqual(slots.filledCount, 2)
+        XCTAssertFalse(slots.replace(40, at: 4, total: 4))
+        XCTAssertEqual(slots.slots.map { $0 ?? -1 }, [10, -1, 31, -1])
+    }
+
     @MainActor
     func testBatchQueueAcceptsMultipleVideosAndRemovesDuplicates() {
         let model = StoryboardViewModel()
@@ -339,6 +358,87 @@ final class FrameSelectionTests: XCTestCase {
         XCTAssertEqual(atStart.count, 2)
         XCTAssertEqual(try XCTUnwrap(atStart.first), 0, accuracy: 0.000_001)
         XCTAssertEqual(try XCTUnwrap(atStart.last), 0.45, accuracy: 0.000_001)
+    }
+
+    func testCentreFirstRecoveryKeepsActionAndDissolveNeighbourhoodsAvailable() {
+        let candidateRecovery = ManualFrameExtractor.candidateRecoveryTimes(
+            around: 5,
+            duration: 12,
+            frameRate: 30
+        )
+        XCTAssertEqual(candidateRecovery.count, 2)
+        XCTAssertEqual(candidateRecovery[0], 4.55, accuracy: 0.000_001)
+        XCTAssertEqual(candidateRecovery[1], 5.45, accuracy: 0.000_001)
+
+        let sharpnessRecovery = ManualFrameExtractor.sharpnessRecoveryTimes(
+            around: 5,
+            duration: 12,
+            frameRate: 30
+        )
+        XCTAssertEqual(sharpnessRecovery.count, 6)
+        XCTAssertFalse(sharpnessRecovery.contains(where: { abs($0 - 5) < 0.000_001 }))
+        XCTAssertEqual(try XCTUnwrap(sharpnessRecovery.first), 5 - (3.0 / 30.0), accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(sharpnessRecovery.last), 5 + (3.0 / 30.0), accuracy: 0.000_001)
+
+        let likelyActionBlur = PixelMetrics(
+            histogram: Array(repeating: 1.0 / 16.0, count: 16),
+            luminance: 0.46,
+            blackRatio: 0.02,
+            brightRatio: 0.03,
+            dominantToneRatio: 0.10,
+            sharpness: 0.07,
+            focusedEdgeRatio: 0.21,
+            contrast: 0.10,
+            fingerprint: 0
+        )
+        XCTAssertTrue(ManualFrameExtractor.candidateNeedsRecovery(likelyActionBlur))
+
+        let crispStill = PixelMetrics(
+            histogram: Array(repeating: 1.0 / 16.0, count: 16),
+            luminance: 0.46,
+            blackRatio: 0.02,
+            brightRatio: 0.03,
+            dominantToneRatio: 0.10,
+            sharpness: 0.22,
+            focusedEdgeRatio: 0.72,
+            contrast: 0.27,
+            fingerprint: 1
+        )
+        XCTAssertFalse(ManualFrameExtractor.candidateNeedsRecovery(crispStill))
+    }
+
+    func testCentreFirstDecodeDiagnosticsProtectTheBatchBudget() {
+        let gallery = ManualFrameExtractor.candidateSamplingDiagnostics(
+            itemCount: 72,
+            primaryRequests: 72,
+            localRecoveryRequests: 0,
+            wideRecoveryRequests: 0
+        )
+        XCTAssertEqual(gallery.fixedBaselineRequestCount, 216)
+        XCTAssertEqual(gallery.totalRequests, 72)
+        XCTAssertEqual(gallery.avoidedRequests, 144)
+        XCTAssertEqual(gallery.avoidedRequestRatio, 2.0 / 3.0, accuracy: 0.000_001)
+
+        let selected = ManualFrameExtractor.selectedRefinementDiagnostics(
+            itemCount: 36,
+            primaryRequests: 36,
+            localRecoveryRequests: 0,
+            finalRequests: 36
+        )
+        XCTAssertEqual(selected.fixedBaselineRequestCount, 288)
+        XCTAssertEqual(selected.totalRequests, 72)
+        XCTAssertEqual(selected.avoidedRequestRatio, 0.75, accuracy: 0.000_001)
+
+        // When every selected card is blurred, the full former recovery budget
+        // remains available rather than silently dropping action moments.
+        let allActionRecovery = ManualFrameExtractor.selectedRefinementDiagnostics(
+            itemCount: 36,
+            primaryRequests: 36,
+            localRecoveryRequests: 216,
+            finalRequests: 36
+        )
+        XCTAssertEqual(allActionRecovery.totalRequests, allActionRecovery.fixedBaselineRequestCount)
+        XCTAssertEqual(allActionRecovery.avoidedRequests, 0)
     }
 
     func testLargeGridsUseEnoughSpareCandidatesWithoutTheFormerFiftyPercentOverscan() {
